@@ -31,7 +31,13 @@ enum class value_t: uint8_t {
 };
 class json;
 
-using object_t = std::unordered_map<std::string, json>;
+template <typename N, typename V>
+struct name_value {
+    N name;
+    V value; 
+};
+
+using object_t = std::vector<name_value<std::string, json>>;
 using array_t = std::vector<json>;
 using string_t = std::string;
 
@@ -130,8 +136,19 @@ public:
         if (looks_like_object) {
             type = value_t::object;
             value = object_t();
+            value.object->reserve(init.size());
             for (auto& it : init) {
-                value.object->insert(std::make_pair(*it[0].get<std::string>(), std::move(it[1])));
+                bool found = false;
+                for (auto& nv : *value.object) {
+                    if (nv.name == *it[0].get<std::string>()) {
+                        found = true;
+                        nv.value = std::move(it[1]);
+                        break;
+                    }
+                }
+                if (!found) {
+                    value.object->push_back({*it[0].get<std::string>(), std::move(it[1])});
+                }
             }
         } else {
             type = value_t::array;
@@ -453,11 +470,11 @@ public:
                 n++;
                 auto e = j.value.object->end();
                 while (n != e) {
-                    os << "\"" << b->first << "\": " << b->second << ", ";
+                    os << "\"" << b->name << "\": " << b->value << ", ";
                     ++b;
                     ++n;
                 }
-                os << "\"" << b->first << "\": " << b->second << "}";
+                os << "\"" << b->name << "\": " << b->value << "}";
                 break;
             }
             case value_t::array: {
@@ -533,11 +550,15 @@ public:
             type = value_t::object;
             value = json_value(value_t::object);
         }
-        return (*value.object)[k];
-    }
-    
-    const json& operator[](const char* k) const {
-        return (*value.object)[k];
+
+        for (auto& [name, value] : *value.object) {
+            if (name == k) {
+                return value;
+            }
+        }
+
+        value.object->push_back({k, json()});
+        return value.object->back().value;
     }
 
     json& operator[](const std::string& k) {
@@ -545,11 +566,26 @@ public:
             type = value_t::object;
             value = json_value(value_t::object);
         }
-        return (*value.object)[k];
+
+        for (auto& [name, value] : *value.object) {
+            if (name == k) {
+                return value;
+            }
+        }
+
+        value.object->push_back({k, json()});
+        return value.object->back().value;
     }
     
     const json& operator[](const std::string& k) const {
-        return (*value.object)[k];
+        for (auto& [name, value] : *value.object) {
+            if (name == k) {
+                return value;
+            }
+        }
+
+        value.object->push_back({k, json()});
+        return value.object->back().value;
     }
 
     template<typename ValueT, typename ObjectItT, typename ArrayItT>
@@ -571,7 +607,7 @@ public:
         reference_type operator*() {
             switch (type) {
                 case value_t::object: 
-                    return object_it->second;
+                    return object_it->value;
                 case value_t::array: 
                     return *array_it;
                 case value_t::string:
@@ -599,31 +635,38 @@ public:
                     std::abort();
             }
         }
+        
+        const string_t& name() {
+            if (type == value_t::object) {
+                return object_it->name;
+            }
+            std::abort();
+        }
 
         const string_t& key() {
             if (type == value_t::object) {
-                return object_it->first;
+                return object_it->name;
             }
             std::abort();
         }
 
         const string_t& first() {
             if (type == value_t::object) {
-                return object_it->first;
+                return object_it->name;
             }
             std::abort();
         }
         
         reference_type value() {
             if (type == value_t::object) {
-                return object_it->second;
+                return object_it->value;
             }
             std::abort();
         }
         
         reference_type second() {
             if (type == value_t::object) {
-                return object_it->second;
+                return object_it->value;
             }
             std::abort();
         }
