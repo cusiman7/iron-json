@@ -8,6 +8,16 @@
 #include <optional>
 #include <initializer_list>
 #include <iostream>
+#include <cassert>
+
+namespace {
+
+template <typename T>
+bool within_limits(int64_t n) {
+    return n >= std::numeric_limits<T>::min() && n <= std::numeric_limits<T>::max();
+}
+
+}
 
 enum class value_t: uint8_t {
     object,
@@ -329,37 +339,77 @@ public:
         return is_string() ? std::optional<string_t>(*value.string) : std::nullopt;
     }
     
+    operator std::optional<string_t>() const {
+        return get<string_t>();
+    }
+    
     template <>
     std::optional<bool> get<bool>() const {
         return is_boolean() ? std::optional<bool>(value.boolean) : std::nullopt;
     }
+
+    template <>
+    std::optional<int8_t> get<int8_t>() const {
+        if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return std::nullopt;
+    }
+
+    template <>
+    std::optional<int16_t> get<int16_t>() const {
+        if (type == value_t::int_num && within_limits<int16_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return std::nullopt;
+    }
+
+    template <>
+    std::optional<int32_t> get<int32_t>() const {
+        if (type == value_t::int_num && within_limits<int32_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return std::nullopt;
+    }
     
     template <>
     std::optional<int64_t> get<int64_t>() const {
-        switch (type) {
-            case value_t::int_num: 
-                return value.int_num;
-            case value_t::uint_num:
-                return value.uint_num;
-            case value_t::float_num:
-                return value.float_num;
-            default:
-                return std::nullopt;
+        if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
+            return value.int_num;
         }
+        return std::nullopt;
+    }
+    
+    template <>
+    std::optional<uint8_t> get<uint8_t>() const {
+        if (type == value_t::int_num && within_limits<uint8_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return std::nullopt;
+    }
+    
+    template <>
+    std::optional<uint16_t> get<uint16_t>() const {
+        if (type == value_t::int_num && within_limits<uint16_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return std::nullopt;
+    }
+    
+    template <>
+    std::optional<uint32_t> get<uint32_t>() const {
+        if (type == value_t::int_num && within_limits<uint32_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return std::nullopt;
     }
     
     template <>
     std::optional<uint64_t> get<uint64_t>() const {
-        switch (type) {
-            case value_t::uint_num: 
-                return value.uint_num;
-            case value_t::int_num:
-                return value.int_num;
-            case value_t::float_num:
-                return value.float_num;
-            default:
-                return std::nullopt;
+        if (type == value_t::int_num && within_limits<uint64_t>(value.int_num)) {
+            return value.int_num;
         }
+        return std::nullopt;
     }
     
     template <>
@@ -502,18 +552,23 @@ public:
         return (*value.object)[k];
     }
 
-    struct iterator {
+    template<typename ValueT, typename ObjectItT, typename ArrayItT>
+    struct basic_iterator {
+        using value_type = ValueT;
+        using reference_type = ValueT&;
+        using pointer_type = ValueT*;
+
         value_t type;
         union {
             void* null;
-            object_t::iterator object_it;
-            array_t::iterator array_it;
+            ObjectItT object_it;
+            ArrayItT array_it;
         };
-        iterator() : type(value_t::null), null(nullptr) {}
-        iterator(json& o, object_t::iterator it) : type(o.type), object_it(it) {}
-        iterator(json& o, array_t::iterator it) : type(o.type), array_it(it) {}
+        basic_iterator() : type(value_t::null), null(nullptr) {}
+        basic_iterator(reference_type o, ObjectItT it) : type(o.type), object_it(it) {}
+        basic_iterator(reference_type o, ArrayItT it) : type(o.type), array_it(it) {}
     
-        json& operator*() {
+        reference_type operator*() {
             switch (type) {
                 case value_t::object: 
                     return object_it->second;
@@ -529,7 +584,7 @@ public:
             }
         }
         
-        json& operator->() {
+        reference_type operator->() {
             switch (type) {
                 case value_t::object: 
                     return object_it->second;
@@ -545,7 +600,35 @@ public:
             }
         }
 
-        iterator& operator++() {
+        const string_t& key() {
+            if (type == value_t::object) {
+                return object_it->first;
+            }
+            std::abort();
+        }
+
+        const string_t& first() {
+            if (type == value_t::object) {
+                return object_it->first;
+            }
+            std::abort();
+        }
+        
+        reference_type value() {
+            if (type == value_t::object) {
+                return object_it->second;
+            }
+            std::abort();
+        }
+        
+        reference_type second() {
+            if (type == value_t::object) {
+                return object_it->second;
+            }
+            std::abort();
+        }
+
+        basic_iterator& operator++() {
             switch (type) {
                 case value_t::object: 
                     ++object_it;
@@ -564,7 +647,7 @@ public:
             return *this;
         }
 
-        iterator& operator++(int) {
+        basic_iterator& operator++(int) {
             switch (type) {
                 case value_t::object: 
                     object_it++; 
@@ -583,7 +666,7 @@ public:
             return *this;
         }
 
-        bool operator==(const iterator& other) const {
+        bool operator==(const basic_iterator& other) const {
             if (type == other.type) {
                 switch (type) {
                     case value_t::object: 
@@ -602,10 +685,13 @@ public:
             return false; 
         }
 
-        bool operator!=(const iterator& other) const {
+        bool operator!=(const basic_iterator& other) const {
             return !(*this == other);
         }
     };
+
+    using iterator = basic_iterator<json, object_t::iterator, array_t::iterator>;
+    using const_iterator = basic_iterator<const json, object_t::const_iterator, array_t::const_iterator>;
 
     iterator begin() { 
         switch (type) {
@@ -622,4 +708,339 @@ public:
             default: return iterator();
         }
     }
+
+    const_iterator begin() const { 
+        return cbegin();
+    }
+
+    const_iterator end() const { 
+        return cend();
+    }
+
+    const_iterator cbegin() const { 
+        switch (type) {
+            case value_t::object: return const_iterator(*this, value.object->cbegin());
+            case value_t::array: return const_iterator(*this, value.array->cbegin());
+            default: return const_iterator();
+        }
+    }
+
+    const_iterator cend() const { 
+        switch (type) {
+            case value_t::object: return const_iterator(*this, value.object->cend());
+            case value_t::array: return const_iterator(*this, value.array->cend());
+            default: return const_iterator();
+        }
+    }
+
+    struct items_proxy {
+        object_t& o;
+
+        object_t::iterator begin() { return o.begin(); }
+        object_t::iterator end() { return o.end(); }
+        object_t::const_iterator begin() const { return o.cbegin(); }
+        object_t::const_iterator end() const { return o.cend(); }
+        object_t::const_iterator cbegin() { return o.cbegin(); }
+        object_t::const_iterator cend() { return o.cend(); }
+    };
+
+    items_proxy items() {
+        if (type == value_t::object) {
+            return {*value.object};
+        }
+        std::abort();
+    }
 };
+
+// Parsing
+
+enum class number_t {
+    int_num,
+    uint_num,
+    real_num,    
+    error,
+};
+
+struct parsed_number {
+    number_t type;
+    union {
+        int64_t i;
+        uint64_t u;
+        double d;
+        const char* what;
+    };
+};
+
+enum class number_parse_phase {
+    begin, // Allows '-' or any digit
+    unsigned_digits, // 1-9 or '.' 
+    signed_digits_1,
+    signed_digits_2,
+    real_significand_1, // Can only be '0.'
+    real_significand_2, // significand after '.'
+    real_exponent_1, // expoent after 'e' or 'E'. '+' or '-' or any digit
+    real_exponent_2, // expoent after 'e' or 'E'. any digit 
+};
+
+parsed_number parse_number(const std::string& s) {
+    const char* c = s.c_str();
+    const char* c_begin = c;
+    const char* cend = s.c_str() + s.size();
+
+    parsed_number ret { number_t::error, 0 };
+    const char* error = nullptr;
+    bool is_signed = false;
+    bool is_real = false;
+    bool done = false;
+    uint64_t u = 0;
+    bool exponent_is_signed = false;
+    int64_t implicit_exponent = 0;
+    uint64_t explicit_exponent = 0;
+    number_parse_phase phase = number_parse_phase::begin;
+
+    while (!done && c != cend) {
+        switch(phase) {
+            case number_parse_phase::begin:
+                // std::cout << "begin\n"; 
+                switch(*c) {
+                    case '-':
+                        is_signed = true; 
+                        phase = number_parse_phase::signed_digits_1;
+                        break;
+                    case '0':
+                        is_real = true;
+                        phase = number_parse_phase::real_significand_1;
+                        break; 
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        phase = number_parse_phase::unsigned_digits;
+                        u = u * 10 + (*c - '0');
+                        break;
+                    default:
+                        done = true;
+                        error = "Unexpected token when parsing number";
+                        break;
+                }
+                break;
+            case number_parse_phase::unsigned_digits:
+                // std::cout << "unsigned_digits\n"; 
+                switch(*c) {
+                    case '0':
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        u = u * 10 + (*c - '0');
+                        break;
+                    case '.':
+                        is_real = true;
+                        phase = number_parse_phase::real_significand_2;
+                        break;
+                    case 'e':
+                    case 'E':
+                        is_real = true;
+                        phase = number_parse_phase::real_exponent_1;
+                    default:
+                        done = true;
+                        break;
+                }
+                break;
+            case number_parse_phase::signed_digits_1:
+                // std::cout << "signed_digits_1\n"; 
+                switch(*c) {
+                    case '0':
+                        is_real = true;
+                        phase = number_parse_phase::real_significand_1;
+                        break; 
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        phase = number_parse_phase::signed_digits_2;
+                        u = u * 10 + (*c - '0');
+                        break;
+                    case '.':
+                        is_real = true; 
+                        phase = number_parse_phase::real_significand_2;
+                        break;
+                    default:
+                        done = true;
+                        break;
+                }
+                break;
+            case number_parse_phase::signed_digits_2:
+                // std::cout << "signed_digits_2\n"; 
+                switch(*c) {
+                    case '0':
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        u = u * 10 + (*c - '0');
+                        break;
+                    case '.':
+                        is_real = true; 
+                        phase = number_parse_phase::real_significand_2;
+                        break;
+                    case 'e':
+                    case 'E':
+                        is_real = true;
+                        phase = number_parse_phase::real_exponent_1;
+                        break;
+                    default:
+                        done = true;
+                        break;
+                }
+                break;
+            case number_parse_phase::real_significand_1:
+                // std::cout << "real_significand_1\n"; 
+                assert(is_real);
+                switch(*c) {
+                    case '.':
+                        phase = number_parse_phase::real_significand_2;
+                        break;
+                    default:
+                        error = "Expected '.' while parsing real number";
+                        break;
+                }
+                break;
+            case number_parse_phase::real_significand_2:
+                // After decimal
+                // std::cout << "real_significand_2\n"; 
+                assert(is_real);
+                switch(*c) {
+                    case '0':
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        implicit_exponent -= 1;
+                        u = u * 10 + (*c - '0');
+                        break;
+                    case 'e':
+                    case 'E':
+                        phase = number_parse_phase::real_exponent_1;
+                        break;
+                    default:
+                        done = true;
+                        error = "Expected 'e', 'E' or digit after '.'";
+                        break;
+                }
+                break;
+            case number_parse_phase::real_exponent_1:
+                // std::cout << "real_exponent_1\n"; 
+                switch (*c) {
+                    case '0':
+                        // Ignore leading 0s
+                        break;
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        explicit_exponent = explicit_exponent * 10 + (*c - '0');
+                        phase = number_parse_phase::real_exponent_2;
+                        break;
+                    case '-':
+                        exponent_is_signed = true;
+                        // fallthrough
+                    case '+':
+                        phase = number_parse_phase::real_exponent_2;
+                        break;
+                    default:
+                        done = true;
+                        error = "Expected '+', '-', or digit while parsing exponent";
+                        break;
+                }
+                break;
+            case number_parse_phase::real_exponent_2:
+                // std::cout << "real_exponent_2\n"; 
+                switch (*c) {
+                    case '0':
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        explicit_exponent = explicit_exponent * 10 + (*c - '0');
+                        break;
+                    default:
+                        done = true;
+                        break;
+                }
+                break;
+            
+        }
+        c++;
+    }
+
+    if (is_real && is_signed && u == 0) {
+        ret.type = number_t::real_num;
+        ret.d = -0;
+    } else if (!done) {
+        ret.type = number_t::error;
+        ret.what = "unexpected end of string while parsing number";
+    } if (error) {
+        ret.type = number_t::error; 
+        ret.what = error;
+    } else if (!is_signed && !is_real) {
+        if (c - c_begin <= 19 || (c - c_begin == 20 && u >= 10000000000000000000ull)) {
+            ret.type = number_t::uint_num;
+            ret.u = u;
+        } else {
+            ret.type = number_t::error;
+            ret.what = "Overflow while parsing unsigned int";
+        }
+    } else if (is_signed && !is_real) {
+        if (u <= 9223372036854775808ull) {
+            ret.type = number_t::int_num;
+            ret.i = -1 * static_cast<int64_t>(u);
+        } else {
+            ret.type = number_t::error;
+            ret.what = "Overflow while parsing signed int";
+        }
+    } else {
+        // Real
+        int64_t exponent = implicit_exponent + (explicit_exponent * (exponent_is_signed ? -1 : 1)); 
+        ret.type = number_t::real_num;
+        // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
+        ret.d = static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * (is_signed ? -1 : 1);
+    }
+    return ret;
+}
+
