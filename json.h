@@ -797,6 +797,28 @@ public:
 
 // Parsing
 
+struct parsed_string {
+    enum class type {
+        string,
+        error,
+    };
+    type t;
+    union {
+        struct {
+            const char* begin;
+            uint64_t size;
+        } s;
+        const char* error;
+    };
+
+    parsed_string(const char* b, uint64_t s) : t(type::string), s({b, s}) {}
+    explicit parsed_string(const char* e) : t(type::error), error(e) {}
+};
+
+parsed_string parse_string(const char* begin, const char* end) {
+    return parsed_string("not implemented");
+}
+
 enum class number_t {
     int_num,
     uint_num,
@@ -827,10 +849,11 @@ parsed_number parse_number(const std::string& s) {
         signed_digits_2, // any digit, '.', 'e', or 'E' promotes to real
         real_significand_1, // Can only be '0.'
         real_significand_2, // significand after '.'
-        real_exponent_1, // expoent after 'e' or 'E'. '+' or '-' or any digit
-        real_exponent_2, // expoent after 'e' or 'E'. any digit 
+        real_exponent_1, // expoent immediatley after 'e' or 'E'. '+' or '-' or any digit
+        real_exponent_2, // One leading 0 parsed meaning valid exponent. '+' or '-' or any digit
+        real_exponent_3, // expoent after 'e' or 'E'. any digit 
     };
-
+ 
     const char* c = s.c_str();
     const char* c_begin = c;
     const char* cend = s.c_str() + s.size();
@@ -993,6 +1016,7 @@ parsed_number parse_number(const std::string& s) {
                 switch (*c) {
                     case '0':
                         // Ignore leading 0s
+                        phase = parse_phase::real_exponent_2;
                         break;
                     case '1':
                     case '2':
@@ -1004,15 +1028,15 @@ parsed_number parse_number(const std::string& s) {
                     case '8':
                     case '9':
                         explicit_exponent = explicit_exponent * 10 + (*c - '0');
-                        phase = parse_phase::real_exponent_2;
+                        phase = parse_phase::real_exponent_3;
                         break;
                     case '-':
                         exponent_sign = -1;
-                        phase = parse_phase::real_exponent_2;
+                        phase = parse_phase::real_exponent_3;
                         break;
                     case '+':
                         exponent_sign = 1;
-                        phase = parse_phase::real_exponent_2;
+                        phase = parse_phase::real_exponent_3;
                         break;
                     default:
                         return parsed_number("Expected '+', '-', or digit while parsing exponent");
@@ -1020,6 +1044,31 @@ parsed_number parse_number(const std::string& s) {
                 break;
             case parse_phase::real_exponent_2:
                 // std::cout << "real_exponent_2\n"; 
+                switch (*c) {
+                    case '0':
+                        // Ignore leading 0s
+                        break;
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        explicit_exponent = explicit_exponent * 10 + (*c - '0');
+                        phase = parse_phase::real_exponent_3;
+                        break;
+                    default: {
+                        // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
+                        int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                        return parsed_number(static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
+                    }
+                }
+                break;
+            case parse_phase::real_exponent_3:
+                // std::cout << "real_exponent_3\n"; 
                 switch (*c) {
                     case '0':
                     case '1':
@@ -1068,8 +1117,10 @@ parsed_number parse_number(const std::string& s) {
         case parse_phase::real_significand_2:
             return parsed_number("Expected 'e', 'E' or digit after '.'");
         case parse_phase::real_exponent_1:
+            return parsed_number("Expected '+', '-', or digit while parsing exponent");
+        case parse_phase::real_exponent_2:
             // fallthrough
-        case parse_phase::real_exponent_2: {
+        case parse_phase::real_exponent_3: {
             // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
             int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign);
             return parsed_number(static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
