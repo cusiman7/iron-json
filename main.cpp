@@ -143,11 +143,14 @@ int main() {
         "9.109e-31", // mass of electron
         "-1e-1",
         "-0.0e0",
-        "" // SHOULD be error but returns 0!
+        "", // SHOULD be error but returns 0!
+        "-", // error
+        "-.0", // error
     };
 
     for (const auto& s : strings) {
         parsed_number n = parse_number(s);
+        std::cout << "input: '" << s << "' == ";
         switch (n.type) {
             case number_t::int_num:
                 std::cout << "int: " << n.i << "\n";
