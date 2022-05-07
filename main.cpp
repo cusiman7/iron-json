@@ -140,12 +140,15 @@ int main() {
         "-9223372036854775808", // smallest int64_t
         "-9223372036854775809", // smallest int64_t - 1
         "5.972E+24", // mass of earth
+        "-5.972E+24", // mass of earth
         "9.109e-31", // mass of electron
-        "-1e-1",
-        "-0.0e0",
-        "", // SHOULD be error but returns 0!
+        "-9.109e-31", // mass of electron
+        "-1e-1", // -0.1
+        "-0.0e0", // -0
+        "-0.0e", // error
+        "", // error
         "-", // error
-        "-.0", // error
+        "-0.0ee", // error
     };
 
     for (const auto& s : strings) {
