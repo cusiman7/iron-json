@@ -135,6 +135,9 @@ int main() {
     std::cout << "---parsing---\n";
 
     std::vector<std::string> strings = {
+        "0",
+        "-0",
+        "1",
         "18446744073709551615", // largest uint64_t
         "18446744073709551616", // largest uint64_t + 1
         "-9223372036854775808", // smallest int64_t

@@ -1064,7 +1064,7 @@ parsed_number parse_number(const std::string& s) {
                 return parsed_number("Overflow while parsing signed int");
             }
         case parse_phase::real_significand_1:
-            return parsed_number("Expected '.' while parsing real number");
+            return parsed_number(0.0);
         case parse_phase::real_significand_2:
             return parsed_number("Expected 'e', 'E' or digit after '.'");
         case parse_phase::real_exponent_1:
