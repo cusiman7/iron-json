@@ -155,4 +155,8 @@ int main() {
             std::cout << "error: " << n.what << "\n";
             break;
     }
+
+    std::string ws = " \n\r\tHello";
+    const char* c = skip_whitespace(ws.c_str(), ws.c_str() + ws.size());
+    std::cout << *c << "\n";
 }

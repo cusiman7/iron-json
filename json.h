@@ -1087,3 +1087,19 @@ parsed_number parse_number(const std::string& s) {
     return ret;
 }
 
+const char* skip_whitespace(const char* c, const char* cend) {
+    while (c != cend) {
+        switch(*c) {
+            case ' ':
+            case '\n':
+            case '\r':
+            case '\t':
+                break;
+            default:
+                return c;
+        }
+        c++;
+    }
+    return c;
+}
+
