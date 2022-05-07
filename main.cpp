@@ -134,26 +134,34 @@ int main() {
 
     std::cout << "---parsing---\n";
 
-    // auto s = "18446744073709551615"; // largest uint64_t
-    // auto s = "-9223372036854775808"; // smallest int64_t 
-    auto s = "5.972E+24"; // mass of earth
-    // auto s = "9.109e-31"; // mass of electron
-    // auto s = "-1e-1";
-    // auto s = "-0.0e0"
-    parsed_number n = parse_number(s);
-    switch (n.type) {
-        case number_t::int_num:
-            std::cout << "int: " << n.i << "\n";
-            break;
-        case number_t::uint_num:
-            std::cout << "uint: " << n.u << "\n";
-            break;
-        case number_t::real_num:
-            std::cout << "real: " << n.d << "\n";
-            break;
-        case number_t::error:
-            std::cout << "error: " << n.what << "\n";
-            break;
+    std::vector<std::string> strings = {
+        "18446744073709551615", // largest uint64_t
+        "18446744073709551616", // largest uint64_t + 1
+        "-9223372036854775808", // smallest int64_t
+        "-9223372036854775809", // smallest int64_t - 1
+        "5.972E+24", // mass of earth
+        "9.109e-31", // mass of electron
+        "-1e-1",
+        "-0.0e0",
+        "" // SHOULD be error but returns 0!
+    };
+
+    for (const auto& s : strings) {
+        parsed_number n = parse_number(s);
+        switch (n.type) {
+            case number_t::int_num:
+                std::cout << "int: " << n.i << "\n";
+                break;
+            case number_t::uint_num:
+                std::cout << "uint: " << n.u << "\n";
+                break;
+            case number_t::real_num:
+                std::cout << "real: " << n.d << "\n";
+                break;
+            case number_t::error:
+                std::cout << "error: " << n.what << "\n";
+                break;
+        }
     }
 
     std::string ws = " \n\r\tHello";
