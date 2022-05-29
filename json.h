@@ -804,19 +804,35 @@ struct parsed_string {
     };
     type t;
     union {
-        struct {
-            const char* begin;
-            uint64_t size;
-        } s;
+        std::string s;
         const char* error;
     };
 
-    parsed_string(const char* b, uint64_t s) : t(type::string), s({b, s}) {}
+    explicit parsed_string(std::string s) : t(type::string), s(std::move(s)) {}
     explicit parsed_string(const char* e) : t(type::error), error(e) {}
+    ~parsed_string() {
+        if (t == type::string) {
+            s.~basic_string();
+        }
+    }
 };
 
-parsed_string parse_string(const char* begin, const char* end) {
-    return parsed_string("not implemented");
+parsed_string parse_string(const char* c, const char* cend) {
+    enum class parse_phase {
+        begin, // "
+        codepoint,
+        
+    };
+
+    parse_phase phase = parse_phase::begin;
+    for (;c != cend;++c) {
+        switch(phase) {
+            case parse_phase::begin:
+                break;
+        }
+    }
+
+    return parsed_string("Unexpected end of string while parsing string");
 }
 
 enum class number_t {
@@ -849,9 +865,9 @@ parsed_number parse_number(const std::string& s) {
         signed_digits_2, // any digit, '.', 'e', or 'E' promotes to real
         real_significand_1, // Can only be '0.'
         real_significand_2, // significand after '.'
-        real_exponent_1, // expoent immediatley after 'e' or 'E'. '+' or '-' or any digit
-        real_exponent_2, // One leading 0 parsed meaning valid exponent. '+' or '-' or any digit
-        real_exponent_3, // expoent after 'e' or 'E'. any digit 
+        real_exponent_1, // exponent immediatley after 'e' or 'E'. '+' or '-' or any digit
+        real_exponent_2, // any digit, 0s ignored
+        real_exponent_3, // any digit, 0s not ignored
     };
  
     const char* c = s.c_str();
@@ -866,7 +882,7 @@ parsed_number parse_number(const std::string& s) {
     uint64_t explicit_exponent = 0;
     parse_phase phase = parse_phase::begin;
 
-    while (c != cend) {
+    for (;c != cend;++c) {
         switch(phase) {
             case parse_phase::begin:
                 // std::cout << "begin\n"; 
@@ -1090,7 +1106,6 @@ parsed_number parse_number(const std::string& s) {
                 }
                 break;
         }
-        c++;
     }
     
     // We can only be here because we ran out of chars
