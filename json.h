@@ -32,13 +32,7 @@ enum class value_t: uint8_t {
 };
 class json;
 
-template <typename N, typename V>
-struct name_value {
-    N name;
-    V value; 
-};
-
-using object_t = std::vector<name_value<std::string, json>>;
+using object_t = std::vector<std::pair<std::string, json>>;
 using array_t = std::vector<json>;
 using string_t = std::string;
 
@@ -141,9 +135,9 @@ public:
             for (auto& it : init) {
                 bool found = false;
                 for (auto& nv : *value.object) {
-                    if (nv.name == *it[0].get<std::string>()) {
+                    if (nv.first == *it[0].get<std::string>()) {
                         found = true;
-                        nv.value = std::move(it[1]);
+                        nv.second = std::move(it[1]);
                         break;
                     }
                 }
@@ -471,11 +465,11 @@ public:
                 n++;
                 auto e = j.value.object->end();
                 while (n != e) {
-                    os << "\"" << b->name << "\": " << b->value << ", ";
+                    os << "\"" << b->first << "\": " << b->second << ", ";
                     ++b;
                     ++n;
                 }
-                os << "\"" << b->name << "\": " << b->value << "}";
+                os << "\"" << b->first << "\": " << b->second << "}";
                 break;
             }
             case value_t::array: {
@@ -559,7 +553,7 @@ public:
         }
 
         value.object->push_back({k, json()});
-        return value.object->back().value;
+        return value.object->back().second;
     }
 
     json& operator[](const std::string& k) {
@@ -575,7 +569,7 @@ public:
         }
 
         value.object->push_back({k, json()});
-        return value.object->back().value;
+        return value.object->back().second;
     }
     
     const json& operator[](const std::string& k) const {
@@ -586,7 +580,7 @@ public:
         }
 
         value.object->push_back({k, json()});
-        return value.object->back().value;
+        return value.object->back().second;
     }
 
     template<typename ValueT, typename ObjectItT, typename ArrayItT>
@@ -608,7 +602,7 @@ public:
         reference_type operator*() {
             switch (type) {
                 case value_t::object: 
-                    return object_it->value;
+                    return object_it->second;
                 case value_t::array: 
                     return *array_it;
                 case value_t::string:
@@ -639,35 +633,35 @@ public:
         
         const string_t& name() {
             if (type == value_t::object) {
-                return object_it->name;
+                return object_it->first;
             }
             std::abort();
         }
 
         const string_t& key() {
             if (type == value_t::object) {
-                return object_it->name;
+                return object_it->first;
             }
             std::abort();
         }
 
         const string_t& first() {
             if (type == value_t::object) {
-                return object_it->name;
+                return object_it->first;
             }
             std::abort();
         }
         
         reference_type value() {
             if (type == value_t::object) {
-                return object_it->value;
+                return object_it->second;
             }
             std::abort();
         }
         
         reference_type second() {
             if (type == value_t::object) {
-                return object_it->value;
+                return object_it->second;
             }
             std::abort();
         }
