@@ -8,6 +8,7 @@
 #include <optional>
 #include <initializer_list>
 #include <iostream>
+#include <stack>
 #include <cassert>
 
 namespace {
@@ -796,43 +797,65 @@ public:
 };
 
 // Parsing
+struct string {
+    const char* data;
+    size_t size;
+};
 
 struct parsed_string {
     enum class type {
         string,
         error,
     };
+    const char* end;
     type t;
     union {
-        std::string s;
+        string s;
         const char* error;
     };
 
-    explicit parsed_string(std::string s) : t(type::string), s(std::move(s)) {}
-    explicit parsed_string(const char* e) : t(type::error), error(e) {}
-    ~parsed_string() {
-        if (t == type::string) {
-            s.~basic_string();
-        }
-    }
+    parsed_string(const char* end, string s) : end(end), t(type::string), s(s) {}
+    parsed_string(const char* end, const char* e) : end(end), t(type::error), error(e) {}
 };
 
 parsed_string parse_string(const char* c, const char* cend) {
-    enum class parse_phase {
-        begin, // "
-        codepoint,
-        
-    };
+    assert(*c == '"');
+    c++;
+    const char* data = c;
 
-    parse_phase phase = parse_phase::begin;
-    for (;c != cend;++c) {
-        switch(phase) {
-            case parse_phase::begin:
-                break;
+    // TODO: UTF-8 validation
+    while (c != cend - 1) {
+        if (c[0] == '\\') {
+            switch (c[1]) {
+                case '"':
+                case '\\':
+                case '/':
+                case 'b':
+                case 'f':
+                case 'n':
+                case 'r':
+                case 't':
+                    c += 2;
+                    break;
+                case 'u':
+                    // TODO: 4 hex digits
+                    return parsed_string(c, "\\u Hex digits are not supported\n");
+            }
+        } else if (c[0] == '"') {
+            return parsed_string(c, string{data, static_cast<size_t>(c - data)});
+        } else if (c[1] == '"') {
+            c++;
+            return parsed_string(c, string{data, static_cast<size_t>(c - data)});
+        } else {
+            c++;
         }
     }
 
-    return parsed_string("Unexpected end of string while parsing string");
+    if (c[0] == '"') {
+        return parsed_string(c, string{data, static_cast<size_t>(c - data)});
+    }
+
+    return parsed_string(c, "Unexpected end of string while parsing string");
 }
 
 enum class number_t {
@@ -843,6 +866,7 @@ enum class number_t {
 };
 
 struct parsed_number {
+    const char* end;
     number_t type;
     union {
         int64_t i;
@@ -851,13 +875,13 @@ struct parsed_number {
         const char* what;
     };
 
-    explicit parsed_number(int64_t i) : type(number_t::int_num), i(i) {}
-    explicit parsed_number(uint64_t u) : type(number_t::uint_num), u(u) {}
-    explicit parsed_number(double d) : type(number_t::real_num), d(d) {}
-    explicit parsed_number(const char* w) : type(number_t::error), what(w) {}
+    parsed_number(const char* end, int64_t i) : end(end), type(number_t::int_num), i(i) {}
+    parsed_number(const char* end, uint64_t u) : end(end), type(number_t::uint_num), u(u) {}
+    parsed_number(const char* end, double d) : end(end), type(number_t::real_num), d(d) {}
+    parsed_number(const char* end, const char* w) : end(end), type(number_t::error), what(w) {}
 };
 
-parsed_number parse_number(const std::string& s) {
+parsed_number parse_number(const char* str, const char* end) {
     enum class parse_phase {
         begin, // Allows '-' or any digit
         unsigned_digits, // 1-9 or '.' 
@@ -870,9 +894,9 @@ parsed_number parse_number(const std::string& s) {
         real_exponent_3, // any digit, 0s not ignored
     };
  
-    const char* c = s.c_str();
-    const char* c_begin = c;
-    const char* cend = s.c_str() + s.size();
+    const char* c = str;
+    const char* c_begin = str;
+    const char* cend = end;
 
     const char* error = nullptr;
     int sign = 1;
@@ -907,7 +931,7 @@ parsed_number parse_number(const std::string& s) {
                         u = u * 10 + (*c - '0');
                         break;
                     default:
-                        return parsed_number("Unexpected token when parsing number");
+                        return parsed_number(c, "Unexpected token when parsing number");
                 }
                 break;
             case parse_phase::unsigned_digits:
@@ -934,9 +958,9 @@ parsed_number parse_number(const std::string& s) {
                     default:
                         // Return unsigned number
                         if (c - c_begin <= 19 || (c - c_begin == 20 && u >= 10000000000000000000ull)) {
-                            return parsed_number(u);
+                            return parsed_number(c, u);
                         } else {
-                            return parsed_number("Overflow while parsing unsigned int");
+                            return parsed_number(c, "Overflow while parsing unsigned int");
                         }
                 }
                 break;
@@ -959,7 +983,7 @@ parsed_number parse_number(const std::string& s) {
                         u = u * 10 + (*c - '0');
                         break;
                     default:
-                        return parsed_number("Expected digit after '-'");
+                        return parsed_number(c, "Expected digit after '-'");
                 }
                 break;
             case parse_phase::signed_digits_2:
@@ -986,9 +1010,9 @@ parsed_number parse_number(const std::string& s) {
                         break;
                     default:
                         if (u <= 9223372036854775808ull) {
-                            return parsed_number(-1 * static_cast<int64_t>(u));
+                            return parsed_number(c, -1 * static_cast<int64_t>(u));
                         } else {
-                            return parsed_number("Overflow while parsing signed int");
+                            return parsed_number(c, "Overflow while parsing signed int");
                         }
                 }
                 break;
@@ -999,7 +1023,7 @@ parsed_number parse_number(const std::string& s) {
                         phase = parse_phase::real_significand_2;
                         break;
                     default:
-                        return parsed_number("Expected '.' while parsing real number");
+                        return parsed_number(c, "Expected '.' while parsing real number");
                 }
                 break;
             case parse_phase::real_significand_2:
@@ -1024,7 +1048,7 @@ parsed_number parse_number(const std::string& s) {
                         phase = parse_phase::real_exponent_1;
                         break;
                     default:
-                        return parsed_number("Expected 'e', 'E' or digit after '.'");
+                        return parsed_number(c, "Expected 'e', 'E' or digit after '.'");
                 }
                 break;
             case parse_phase::real_exponent_1:
@@ -1055,7 +1079,7 @@ parsed_number parse_number(const std::string& s) {
                         phase = parse_phase::real_exponent_3;
                         break;
                     default:
-                        return parsed_number("Expected '+', '-', or digit while parsing exponent");
+                        return parsed_number(c, "Expected '+', '-', or digit while parsing exponent");
                 }
                 break;
             case parse_phase::real_exponent_2:
@@ -1079,7 +1103,7 @@ parsed_number parse_number(const std::string& s) {
                     default: {
                         // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
                         int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
-                        return parsed_number(static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
+                        return parsed_number(c, static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
                     }
                 }
                 break;
@@ -1101,7 +1125,7 @@ parsed_number parse_number(const std::string& s) {
                     default: {
                         // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
                         int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
-                        return parsed_number(static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
+                        return parsed_number(c, static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
                     }
                 }
                 break;
@@ -1111,34 +1135,34 @@ parsed_number parse_number(const std::string& s) {
     // We can only be here because we ran out of chars
     switch (phase) {
         case parse_phase::begin:
-            return parsed_number("Unexpected end of string while parsing number");
+            return parsed_number(c, "Unexpected end of string while parsing number");
         case parse_phase::unsigned_digits:
             // Return unsigned number
             if (c - c_begin <= 19 || (c - c_begin == 20 && u >= 10000000000000000000ull)) {
-                return parsed_number(u);
+                return parsed_number(c, u);
             } else {
-                return parsed_number("Overflow while parsing unsigned int");
+                return parsed_number(c, "Overflow while parsing unsigned int");
             }
         case parse_phase::signed_digits_1:
-            return parsed_number("Expected digit after '-'");
+            return parsed_number(c, "Expected digit after '-'");
         case parse_phase::signed_digits_2:
             if (u <= 9223372036854775808ull) {
-                return parsed_number(-1 * static_cast<int64_t>(u));
+                return parsed_number(c, -1 * static_cast<int64_t>(u));
             } else {
-                return parsed_number("Overflow while parsing signed int");
+                return parsed_number(c, "Overflow while parsing signed int");
             }
         case parse_phase::real_significand_1:
-            return parsed_number(0.0);
+            return parsed_number(c, 0.0);
         case parse_phase::real_significand_2:
-            return parsed_number("Expected 'e', 'E' or digit after '.'");
+            return parsed_number(c, "Expected 'e', 'E' or digit after '.'");
         case parse_phase::real_exponent_1:
-            return parsed_number("Expected '+', '-', or digit while parsing exponent");
+            return parsed_number(c, "Expected '+', '-', or digit while parsing exponent");
         case parse_phase::real_exponent_2:
             // fallthrough
         case parse_phase::real_exponent_3: {
             // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
             int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign);
-            return parsed_number(static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
+            return parsed_number(c, static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
         }
     }
 }
@@ -1157,5 +1181,98 @@ const char* skip_whitespace(const char* c, const char* cend) {
         c++;
     }
     return c;
+}
+
+std::optional<json> parse(const std::string& s) {
+    std::stack<json> stack;
+    stack.push(json());
+
+    const char* c = s.data();
+    const char* end = c + s.size();
+
+    while (c != end) {
+        c = skip_whitespace(c, end);
+
+        switch (*c) {
+            case '{': // Begin Object
+                break;
+            case '[': // Begin Array
+                break;
+            case '"': // Begin String
+                break;
+            case 't': // begin true
+                if (end - c < 4) {
+                    std::cout << "Unexpected value \"" << std::string_view(c, end-c) << "\"\n";
+                    return std::nullopt;
+                } else if (c[1] == 'r' && c[2] == 'u' && c[3] == 'e') {
+                    stack.top() = json(true); 
+                    c += 4;
+                } else {
+                    std::cout << "Unexpected value \"" << std::string_view(c, 4) << "\"\n";
+                    return std::nullopt;
+                }
+                break;
+            case 'f': // Begin false
+                if (end - c < 5) {
+                    std::cout << "Unexpected value \"" << std::string_view(c, end - c) << "\"\n";
+                    return std::nullopt;
+                } else if (c[1] == 'a' && c[2] == 'l' && c[3] == 's' && c[4] == 'e') {
+                    stack.top() = json(false); 
+                    c += 5;
+                } else {
+                    std::cout << "Unexpected value \"" << std::string_view(c, 5) << "\"\n";
+                    return std::nullopt;
+                }
+                break;
+            case 'n': // begin null
+                if (end - c < 4) {
+                    std::cout << "Unexpected value \"" << std::string_view(c, end-c) << "\"\n";
+                    return std::nullopt;
+                } else if (c[1] == 'u' && c[2] == 'l' && c[3] == 'l') {
+                    stack.top() = json(); 
+                    c += 4;
+                } else {
+                    std::cout << "Unexpected value \"" << std::string_view(c, 4) << "\"\n";
+                    return std::nullopt;
+                }
+                break;
+            case '-':
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9': { // begin number
+                parsed_number n = parse_number(c, end);
+                switch (n.type) {
+                    case number_t::int_num:
+                        stack.top() = json(n.i);
+                        break;
+                    case number_t::uint_num:
+                        stack.top() = json(n.u);
+                        break;
+                    case number_t::real_num:
+                        stack.top() = json(n.d);
+                        break;
+                    case number_t::error:
+                        std::cout << "error: " << n.what << "\n";
+                        return std::nullopt;
+                }
+                c = n.end;
+                break;
+            }
+            default:
+                std::cout << "invalid json\n";
+                return std::nullopt;
+        }
+    }
+
+    json j = stack.top();
+    stack.pop();
+    return j;
 }
 

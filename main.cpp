@@ -157,7 +157,7 @@ int main() {
     };
 
     for (const auto& s : strings) {
-        parsed_number n = parse_number(s);
+        parsed_number n = parse_number(s.data(), s.data() + s.size());
         std::cout << "input: '" << s << "' == ";
         switch (n.type) {
             case number_t::int_num:
@@ -178,4 +178,45 @@ int main() {
     std::string ws = " \n\r\tHello";
     const char* c = skip_whitespace(ws.c_str(), ws.c_str() + ws.size());
     std::cout << *c << "\n";
+
+    {
+        std::vector<std::string> strings = {
+            R"("")",
+            R"("\n")",
+            R"("\\n")",
+            R"("HelloWorld")",
+            R"("HelloWorld\n")",
+            R"("Hello  World\n")",
+            R"("Hello  World\n  \u1234")"
+        };
+        for (const auto& s : strings) {
+            parsed_string ps = parse_string(s.data(), s.data() + s.size());
+            switch (ps.t) {
+                case parsed_string::type::string:
+                    std::cout << "string: \"" << std::string_view(ps.s.data, ps.s.size) << "\"\n";
+                    break;
+                case parsed_string::type::error:
+                    std::cout << "error: " << ps.error << "\n";
+                    break;
+            }
+        }
+    }
+
+    {
+        std::optional<json> j = parse("1234");
+        std::cout << *j << "\n";
+    }
+
+    {
+        std::cout << *parse("null") << "\n";
+        parse("nulf");
+        parse("nil");
+        std::cout << *parse("true") << "\n";
+        parse("tru");
+        parse("truf");
+        std::cout << *parse("false") << "\n";
+        parse("fal");
+        parse("falsf");
+    
+    }
 }
