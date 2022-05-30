@@ -159,6 +159,7 @@ int main(int argc, const char** argv) {
 
     std::vector<std::string> strings = {
         "0",
+        "0,",
         "-0",
         "1",
         "18446744073709551615", // largest uint64_t

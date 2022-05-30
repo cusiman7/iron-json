@@ -1017,7 +1017,7 @@ parsed_number parse_number(const char* str, const char* end) {
                         phase = parse_phase::real_significand_2;
                         break;
                     default:
-                        return parsed_number(c, "Expected '.' while parsing real number");
+                        return parsed_number(c, static_cast<int64_t>(0));
                 }
                 break;
             case parse_phase::real_significand_2:
@@ -1268,18 +1268,22 @@ std::optional<json> parse(const std::string& s) {
             case '8':
             case '9': { // begin number
                 parsed_number n = parse_number(c, cend);
-                c = n.end;
                 switch (n.type) {
                     case number_t::int_num:
+                        c = n.end;
                         c = skip_whitespace(c, cend);
                         return json(n.i);
                     case number_t::uint_num:
+                        c = n.end;
                         c = skip_whitespace(c, cend);
                         return json(n.u);
                     case number_t::real_num:
+                        c = n.end;
                         c = skip_whitespace(c, cend);
                         return json(n.d);
                     case number_t::error:
+                        std::cout << "At character " << c - s.data() << "\n";
+                        std::cout << "While parsing number \"" << std::string_view(c, n.end -c) << "\"\n";
                         std::cout << "Unexpected value: " << n.what << "\n";
                         return std::nullopt;
                 }
