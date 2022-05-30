@@ -452,38 +452,52 @@ public:
         }
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const json& j) {
+    static std::ostream& pretty_print(std::ostream& os, const json& j, size_t& indent) {
         switch (j.type) {
             case value_t::object: {
-                os << "{";
                 if (j.value.object->empty()) {
-                    os << "}"; 
+                    os << "{}"; 
                     break;
                 }
+                os << "{\n";
+                indent += 2;
                 auto b = j.value.object->begin();
                 auto n = b;
                 n++;
                 auto e = j.value.object->end();
                 while (n != e) {
-                    os << "\"" << b->first << "\": " << b->second << ", ";
+                    std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
+                    os << "\"" << b->first << "\": ";
+                    pretty_print(os, b->second, indent) << ",\n";
                     ++b;
                     ++n;
                 }
-                os << "\"" << b->first << "\": " << b->second << "}";
+                std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
+                os << "\"" << b->first << "\": ";
+                pretty_print(os, b->second, indent) << "\n";
+                indent -= 2;
+                std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
+                os << "}";
                 break;
             }
             case value_t::array: {
-                os << "[";
                 if (j.value.array->empty()) {
-                    os << "]";
+                    os << "[]";
                     break;
                 }
+                os << "[\n";
+                indent += 2;
                 auto b = j.value.array->begin();
                 auto e = --j.value.array->end();
                 while (b != e) {
-                    os << *b++ << ", ";
+                    std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
+                    pretty_print(os, *b++, indent) << ",\n";
                 }
-                os << *b << "]";
+                std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
+                pretty_print(os, *b, indent) << "\n";
+                indent -= 2;
+                std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
+                os << "]";
                 break;
             }
             case value_t::string:
@@ -506,6 +520,11 @@ public:
                 break;
         }
         return os;
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const json& j) {
+        size_t indent = 0;
+        return pretty_print(os, j, indent);
     }
 
     // Array Operations
