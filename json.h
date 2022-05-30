@@ -1042,7 +1042,9 @@ parsed_number parse_number(const char* str, const char* end) {
                         phase = parse_phase::real_exponent_1;
                         break;
                     default:
-                        return parsed_number(c, "Expected 'e', 'E' or digit after '.'");
+                        //return parsed_number(c, "Expected 'e', 'E' or digit after '.'");
+                        int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                        return parsed_number(c, static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
                 }
                 break;
             case parse_phase::real_exponent_1:
@@ -1161,7 +1163,7 @@ parsed_number parse_number(const char* str, const char* end) {
     }
 }
 
-const char* skip_whitespace(const char* c, const char* cend) {
+inline const char* skip_whitespace(const char* c, const char* cend) {
     while (c != cend) {
         switch(*c) {
             case ' ':
@@ -1178,55 +1180,79 @@ const char* skip_whitespace(const char* c, const char* cend) {
 }
 
 std::optional<json> parse(const std::string& s) {
+    // The stack holds partial arrays and partial objects.
+    // Arrays are stored on the stack as-is.
+    // Partial objects are stored by first storing the object itself, then they parsed key
     std::stack<json> stack;
-    stack.push(json());
-
     const char* c = s.data();
-    const char* end = c + s.size();
+    const char* cend = c + s.size();
 
-    while (c != end) {
-        c = skip_whitespace(c, end);
-
+    auto parse_value = [&]() -> std::optional<json> {
+        c = skip_whitespace(c, cend);
+        if (c == cend) {
+            std::cout << "Unexpected end of string while parsing value\n";
+            return std::nullopt;
+        }
         switch (*c) {
-            case '{': // Begin Object
+            case '{': // Begin object
+                c = skip_whitespace(c + 1, cend);
+                return json::object();
+            case '[': // Begin array
+                c = skip_whitespace(c + 1, cend);
+                return json::array();
+            case '"': { // Begin String
+                parsed_string ps = parse_string(c, cend);
+                switch (ps.t) {
+                    case parsed_string::type::string:
+                        assert(*c == '"');
+                        c = skip_whitespace(ps.end + 1, cend);
+                        return json(std::string(ps.s.data, ps.s.size));
+                    case parsed_string::type::error:
+                        c = ps.end; 
+                        std::cout << "Error: " << ps.error << "\n";
+                        return std::nullopt;
+                }
                 break;
-            case '[': // Begin Array
-                break;
-            case '"': // Begin String
-                break;
+            }
             case 't': // begin true
-                if (end - c < 4) {
-                    std::cout << "Unexpected value \"" << std::string_view(c, end-c) << "\"\n";
+                if (cend - c < 4) {
+                    std::cout << "Unexpected value \"" << std::string_view(c, cend - c) << "\"\n";
+                    c += cend - c;
                     return std::nullopt;
                 } else if (c[1] == 'r' && c[2] == 'u' && c[3] == 'e') {
-                    stack.top() = json(true); 
-                    c += 4;
+                    c = skip_whitespace(c + 4, cend);
+                    return json(true);
                 } else {
                     std::cout << "Unexpected value \"" << std::string_view(c, 4) << "\"\n";
+                    c += 4;
                     return std::nullopt;
                 }
                 break;
             case 'f': // Begin false
-                if (end - c < 5) {
-                    std::cout << "Unexpected value \"" << std::string_view(c, end - c) << "\"\n";
+                if (cend - c < 5) {
+                    std::cout << "Unexpected value \"" << std::string_view(c, cend - c) << "\"\n";
+                    c += cend - c;
                     return std::nullopt;
                 } else if (c[1] == 'a' && c[2] == 'l' && c[3] == 's' && c[4] == 'e') {
-                    stack.top() = json(false); 
-                    c += 5;
+                    c = skip_whitespace(c + 5, cend);
+                    return json(false);
                 } else {
                     std::cout << "Unexpected value \"" << std::string_view(c, 5) << "\"\n";
+                    c += 5;
                     return std::nullopt;
                 }
                 break;
             case 'n': // begin null
-                if (end - c < 4) {
-                    std::cout << "Unexpected value \"" << std::string_view(c, end-c) << "\"\n";
+                if (cend - c < 4) {
+                    std::cout << "Unexpected value \"" << std::string_view(c, cend-c) << "\"\n";
+                    c += cend - c;
                     return std::nullopt;
                 } else if (c[1] == 'u' && c[2] == 'l' && c[3] == 'l') {
-                    stack.top() = json(); 
-                    c += 4;
+                    c = skip_whitespace(c + 4, cend);
+                    return json();
                 } else {
                     std::cout << "Unexpected value \"" << std::string_view(c, 4) << "\"\n";
+                    c += 4;
                     return std::nullopt;
                 }
                 break;
@@ -1241,30 +1267,206 @@ std::optional<json> parse(const std::string& s) {
             case '7':
             case '8':
             case '9': { // begin number
-                parsed_number n = parse_number(c, end);
+                parsed_number n = parse_number(c, cend);
+                c = n.end;
                 switch (n.type) {
                     case number_t::int_num:
-                        stack.top() = json(n.i);
-                        break;
+                        c = skip_whitespace(c, cend);
+                        return json(n.i);
                     case number_t::uint_num:
-                        stack.top() = json(n.u);
-                        break;
+                        c = skip_whitespace(c, cend);
+                        return json(n.u);
                     case number_t::real_num:
-                        stack.top() = json(n.d);
-                        break;
+                        c = skip_whitespace(c, cend);
+                        return json(n.d);
                     case number_t::error:
-                        std::cout << "error: " << n.what << "\n";
+                        std::cout << "Unexpected value: " << n.what << "\n";
                         return std::nullopt;
                 }
-                c = n.end;
                 break;
             }
             default:
-                std::cout << "invalid json\n";
+                break;
+        }
+        return std::nullopt;
+    };
+
+    std::optional<json> value = parse_value();
+    if (!value) {
+        return std::nullopt;
+    } else if (!(value->is_object() || value->is_array())) {
+        // Expect a single value document
+        c = skip_whitespace(c, cend);
+        if (c != cend) {
+            std::cout << "Unexpected character '" << *c << "'\n";
+            return std::nullopt;
+        }
+        return value;
+    }
+
+    // Array or Object
+    stack.push(*value);
+
+    auto end_array_or_object = [&]() {
+        assert(stack.top().is_array() || stack.top().is_object());
+        json a_or_o = stack.top();
+        stack.pop();
+
+        assert(stack.top().is_string() || stack.top().is_array());
+        if (stack.top().is_string()) {
+            json key = stack.top();
+            stack.pop();
+
+            assert(stack.top().is_object());
+            stack.top()[*std::move(key.get<std::string>())] = std::move(a_or_o);
+        } else {
+            assert(stack.top().is_array());
+            stack.top().push_back(std::move(a_or_o));
+        }
+    };
+
+    while (true) {
+        // Parse Array
+        assert(stack.top().is_array() || stack.top().is_object());
+        if (stack.top().is_array()) {
+            if (!stack.top().empty()) {
+                // Array values are separated by commas
+                c = skip_whitespace(c, cend);
+                if (c != cend && *c == ']') {
+                    c++;
+                    if (stack.size() == 1) {
+                        break;
+                    }
+                    end_array_or_object();
+                    continue;
+                }
+
+                if (c == cend || *c != ',') {
+                    std::cout << "Expected ','\n";
+                    return std::nullopt;
+                }
+                c++;
+            }
+
+            std::optional<json> value = parse_value();
+            if (!value) {
+                if (c != cend && *c == ']') {
+                    c++;
+                    if (stack.size() == 1) {
+                        break;
+                    }
+                    end_array_or_object();
+                    continue;
+                }
                 return std::nullopt;
+            } else if (value->is_object() || value->is_array()) {
+                stack.push(*std::move(value));
+                continue;
+            } else {
+                stack.top().push_back(*std::move(value));
+                continue;
+            }
+        } else {
+            // Parse Object
+            assert(stack.top().is_object());
+
+            if (!stack.top().empty()) {
+                // Key Value pairs are separated by commas
+                c = skip_whitespace(c, cend);
+                if (c != cend && *c == '}') {
+                    c++;
+                    if (stack.size() == 1) {
+                        break;
+                    }
+                    end_array_or_object();
+                    continue;
+                }
+
+                if (c == cend || *c != ',') {
+                    std::cout << "Expected ','\n";
+                    return std::nullopt;
+                }
+                c++;
+            }
+
+            // Objects are key value pairs. Keys must be strings. Values can be anything.
+            // Colons ":" separate Keys and Values.
+            // Commans "," separate Key-Value pairs.
+            // { "key": value, "key2": value2, ... }
+            //  ^
+
+            c = skip_whitespace(c, cend);
+            if (c == cend) {
+                std::cout << "Unexpected end of string while parsing Key\n";
+                return std::nullopt;
+            }
+
+            if (*c == '}') {
+                // { }
+                //   ^
+                c++;
+                if (stack.size() == 1) {
+                    break;
+                }
+                end_array_or_object();
+                continue;
+            } else if (*c != '"') {
+                std::cout << "Expected start of String for Key\n";
+                return std::nullopt;
+            } 
+
+            // { "key": value, "key2": value2, ... }
+            //   ^
+            std::string key;
+            parsed_string ps = parse_string(c, cend);
+            switch (ps.t) {
+                case parsed_string::type::string:
+                    c = ps.end + 1;
+                    key = std::string(ps.s.data, ps.s.size);
+                    break;
+                case parsed_string::type::error:
+                    std::cout << "Expected Key: " << ps.error << "\n";
+                    return std::nullopt;
+            }
+
+            // { "key": value, "key2": value2, ... }
+            //        ^
+            c = skip_whitespace(c, cend);
+            if (c == cend || *c != ':') {
+                std::cout << "Expected ':'\n";
+                return std::nullopt;
+            }
+            c++;
+            c = skip_whitespace(c, cend);
+
+            // { "key": value, "key2": value2, ... }
+            //          ^
+            std::optional<json> value = parse_value();
+            if (!value) {
+                std::cout << "Expected Value\n";
+                return std::nullopt;
+            } else if (value->is_object() || value->is_array()) {
+                // Stack will be: |value | <- top
+                //                |key   |
+                //                |object|
+                stack.push(std::move(key));
+                stack.push(*std::move(value));
+                continue;
+            } else {
+                // We parsed a Key and a non-object, non-array Value
+                stack.top()[key] = *std::move(value);
+                continue;
+            }
         }
     }
 
+    c = skip_whitespace(c, cend);
+    if (c != cend) {
+        std::cout << __LINE__ << ": Unexpected character '" << *c << "'\n";
+        return std::nullopt;
+    }
+
+    assert(stack.size() == 1);
     json j = stack.top();
     stack.pop();
     return j;

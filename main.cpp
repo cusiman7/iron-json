@@ -154,6 +154,8 @@ int main() {
         "", // error
         "-", // error
         "-0.0ee", // error
+        "1.2,", // 1.2 
+        "1.00000000000000000000,", // 1 
     };
 
     for (const auto& s : strings) {
@@ -218,5 +220,36 @@ int main() {
         parse("fal");
         parse("falsf");
     
+    }
+    
+    {
+        std::cout << *parse("\"Hello World\"") << "\n";
+    }
+    
+    {
+        std::cout << *parse("[]") << "\n";
+        parse("[");
+        std::string s;
+        s.reserve(10000);
+        for (int i = 0; i < 10000; i++) {
+            s.append("[");
+        }
+        parse(s);
+        std::cout << *parse("[1, true, false]") << "\n";
+        std::cout << *parse("[\"hi\", true, false]") << "\n";
+        std::cout << *parse("[1, true, false, [1.2, false, []]]") << "\n";
+        std::cout << *parse("[{\"hi\": true}, false]") << "\n";
+    }
+    
+    {
+        std::cout << *parse("{}") << "\n";
+        parse("{{");
+        std::cout << *parse(R"({"key": true, "key2": false, "key3": null, "key4": 123})") << "\n";
+        std::cout << *parse(R"({"key": true, "key2": {"key3": null, "key4": 123}})") << "\n";
+    }
+
+    {
+        std::cout << *parse(R"({"key": true, "key2": [null, "key4", 123]})") << "\n";
+        std::cout << *parse(R"([{"key": true}, {"key2": [null, "str4", 123]}])") << "\n";
     }
 }
