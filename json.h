@@ -1291,8 +1291,10 @@ std::optional<json> parse(const std::string& s) {
         return std::nullopt;
     };
 
+    // JSON docs can be single values all by themselves
     std::optional<json> value = parse_value();
     if (!value) {
+        std::cout << "Expected a value\n";
         return std::nullopt;
     } else if (!(value->is_object() || value->is_array())) {
         // Expect a single value document
@@ -1307,7 +1309,7 @@ std::optional<json> parse(const std::string& s) {
     // Array or Object
     stack.push(*value);
 
-    auto end_array_or_object = [&]() {
+    auto end_array_or_object = [&stack]() {
         assert(stack.top().is_array() || stack.top().is_object());
         json a_or_o = stack.top();
         stack.pop();
@@ -1327,11 +1329,17 @@ std::optional<json> parse(const std::string& s) {
 
     while (true) {
         // Parse Array
+        // Arrays are lists of Values.
+        // Commas "," separate Values.
+        // [ value, value2, ... ]
+        //  ^
+
         assert(stack.top().is_array() || stack.top().is_object());
         if (stack.top().is_array()) {
             if (!stack.top().empty()) {
-                // Array values are separated by commas
                 c = skip_whitespace(c, cend);
+                // [ value, value2, ... ]
+                //                      ^
                 if (c != cend && *c == ']') {
                     c++;
                     if (stack.size() == 1) {
@@ -1341,6 +1349,8 @@ std::optional<json> parse(const std::string& s) {
                     continue;
                 }
 
+                // [ value, value2, ... ]
+                //        ^
                 if (c == cend || *c != ',') {
                     std::cout << "Expected ','\n";
                     return std::nullopt;
@@ -1348,8 +1358,12 @@ std::optional<json> parse(const std::string& s) {
                 c++;
             }
 
+            // [ value, value2, ... ]
+            //   ^
             std::optional<json> value = parse_value();
             if (!value) {
+                // [ value, value2, ... ]
+                //                      ^
                 if (c != cend && *c == ']') {
                     c++;
                     if (stack.size() == 1) {
@@ -1360,6 +1374,8 @@ std::optional<json> parse(const std::string& s) {
                 }
                 return std::nullopt;
             } else if (value->is_object() || value->is_array()) {
+                // Stack will be: |value | <- top
+                //                |array |
                 stack.push(*std::move(value));
                 continue;
             } else {
@@ -1368,10 +1384,18 @@ std::optional<json> parse(const std::string& s) {
             }
         } else {
             // Parse Object
+            // Objects are unordered sets of Name-Value pairs.
+            // Names must be Strings.
+            // Colons ":" separate Names and Values.
+            // Commas "," separate Name-Value pairs.
+            // { "name": value, "name2": value2, ... }
+            //  ^
+
             assert(stack.top().is_object());
 
             if (!stack.top().empty()) {
-                // Key Value pairs are separated by commas
+                // { "name": value, "name2": value2, ... }
+                //                                       ^
                 c = skip_whitespace(c, cend);
                 if (c != cend && *c == '}') {
                     c++;
@@ -1382,18 +1406,14 @@ std::optional<json> parse(const std::string& s) {
                     continue;
                 }
 
+                // { "name": value, "name2": value2, ... }
+                //                ^
                 if (c == cend || *c != ',') {
                     std::cout << "Expected ','\n";
                     return std::nullopt;
                 }
                 c++;
             }
-
-            // Objects are key value pairs. Keys must be strings. Values can be anything.
-            // Colons ":" separate Keys and Values.
-            // Commans "," separate Key-Value pairs.
-            // { "key": value, "key2": value2, ... }
-            //  ^
 
             c = skip_whitespace(c, cend);
             if (c == cend) {
@@ -1402,8 +1422,8 @@ std::optional<json> parse(const std::string& s) {
             }
 
             if (*c == '}') {
-                // { }
-                //   ^
+                // { "name": value, "name2": value2, ... }
+                //                                       ^
                 c++;
                 if (stack.size() == 1) {
                     break;
@@ -1415,8 +1435,8 @@ std::optional<json> parse(const std::string& s) {
                 return std::nullopt;
             } 
 
-            // { "key": value, "key2": value2, ... }
-            //   ^
+            // { "name": value, "name2": value2, ... }
+            //   ^ 
             std::string key;
             parsed_string ps = parse_string(c, cend);
             switch (ps.t) {
@@ -1429,8 +1449,8 @@ std::optional<json> parse(const std::string& s) {
                     return std::nullopt;
             }
 
-            // { "key": value, "key2": value2, ... }
-            //        ^
+            // { "name": value, "name2": value2, ... }
+            //         ^
             c = skip_whitespace(c, cend);
             if (c == cend || *c != ':') {
                 std::cout << "Expected ':'\n";
@@ -1439,8 +1459,8 @@ std::optional<json> parse(const std::string& s) {
             c++;
             c = skip_whitespace(c, cend);
 
-            // { "key": value, "key2": value2, ... }
-            //          ^
+            // { "name": value, "name2": value2, ... }
+            //           ^
             std::optional<json> value = parse_value();
             if (!value) {
                 std::cout << "Expected Value\n";
@@ -1453,7 +1473,7 @@ std::optional<json> parse(const std::string& s) {
                 stack.push(*std::move(value));
                 continue;
             } else {
-                // We parsed a Key and a non-object, non-array Value
+                // We parsed a Name and a non-object, non-array Value
                 stack.top()[key] = *std::move(value);
                 continue;
             }
