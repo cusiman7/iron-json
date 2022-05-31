@@ -10,6 +10,7 @@
 #include <iostream>
 #include <stack>
 #include <cassert>
+#include <cfloat>
 
 namespace {
 
@@ -394,32 +395,32 @@ public:
     
     template <>
     std::optional<uint8_t> get<uint8_t>() const {
-        if (type == value_t::int_num && within_limits<uint8_t>(value.int_num)) {
-            return value.int_num;
+        if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return std::nullopt;
     }
     
     template <>
     std::optional<uint16_t> get<uint16_t>() const {
-        if (type == value_t::int_num && within_limits<uint16_t>(value.int_num)) {
-            return value.int_num;
+        if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return std::nullopt;
     }
     
     template <>
     std::optional<uint32_t> get<uint32_t>() const {
-        if (type == value_t::int_num && within_limits<uint32_t>(value.int_num)) {
-            return value.int_num;
+        if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return std::nullopt;
     }
     
     template <>
     std::optional<uint64_t> get<uint64_t>() const {
-        if (type == value_t::int_num && within_limits<uint64_t>(value.int_num)) {
-            return value.int_num;
+        if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return std::nullopt;
     }
@@ -894,13 +895,48 @@ struct parsed_number {
     parsed_number(const char* end, const char* w) : end(end), type(number_t::error), what(w) {}
 };
 
+// https://github.com/simdjson/simdjson/blob/730939f01c7bd4aff103c6523697c3f70484a322/include/simdjson/generic/numberparsing.h#L55
+bool compute_double(int64_t power, uint64_t i, double* d) {
+#ifndef FLT_EVAL_METHOD
+#error "FLT_EVAL_METHOD should be defined, please include cfloat."
+#endif
+#if (FLT_EVAL_METHOD != 1) && (FLT_EVAL_METHOD != 0)
+    // We cannot be certain that x/y is rounded to nearest.
+    if (0 <= power && power <= 22 && i <= 9007199254740991) {
+#else
+    if (-22 <= power && power <= 22 && i <= 9007199254740991) {
+#endif
+        // convert the integer into a double. This is lossless since
+        // 0 <= i <= 2^53 - 1.
+        *d = double(i);
+        //
+        // The general idea is as follows.
+        // If 0 <= s < 2^53 and if 10^0 <= p <= 10^22 then
+        // 1) Both s and p can be represented exactly as 64-bit floating-point
+        // values
+        // (binary64).
+        // 2) Because s and p can be represented exactly as floating-point values,
+        // then s * p
+        // and s / p will produce correctly rounded values.
+        //
+        if (power < 0) {
+            *d = *d / pow(10.0, -power);
+        } else {
+            *d = *d * pow(10.0, power);
+        }
+        return true;
+    }
+    return false;
+}
+
 parsed_number parse_number(const char* str, const char* end) {
     enum class parse_phase {
         begin, // Allows '-' or any digit
         unsigned_digits, // 1-9 or '.' 
         signed_digits_1, // Follows leading '-'. Any digit but 0 promotes to real
         signed_digits_2, // any digit, '.', 'e', or 'E' promotes to real
-        real_significand_1, // Can only be '0.'
+        real_decimal, // Can only be '0.'
+        real_significand_1, // First digit of significand after '.'. Ignores leading 0s
         real_significand_2, // significand after '.'
         real_exponent_1, // exponent immediatley after 'e' or 'E'. '+' or '-' or any digit
         real_exponent_2, // any digit, 0s ignored
@@ -929,7 +965,7 @@ parsed_number parse_number(const char* str, const char* end) {
                         phase = parse_phase::signed_digits_1;
                         break;
                     case '0':
-                        phase = parse_phase::real_significand_1;
+                        phase = parse_phase::real_decimal;
                         break; 
                     case '1':
                     case '2':
@@ -963,7 +999,7 @@ parsed_number parse_number(const char* str, const char* end) {
                         u = u * 10 + (*c - '0');
                         break;
                     case '.':
-                        phase = parse_phase::real_significand_2;
+                        phase = parse_phase::real_significand_1;
                         break;
                     case 'e':
                     case 'E':
@@ -981,7 +1017,7 @@ parsed_number parse_number(const char* str, const char* end) {
                 // std::cout << "signed_digits_1\n"; 
                 switch(*c) {
                     case '0':
-                        phase = parse_phase::real_significand_1;
+                        phase = parse_phase::real_decimal;
                         break; 
                     case '1':
                     case '2':
@@ -1015,7 +1051,7 @@ parsed_number parse_number(const char* str, const char* end) {
                         u = u * 10 + (*c - '0');
                         break;
                     case '.':
-                        phase = parse_phase::real_significand_2;
+                        phase = parse_phase::real_significand_1;
                         break;
                     case 'e':
                     case 'E':
@@ -1029,19 +1065,50 @@ parsed_number parse_number(const char* str, const char* end) {
                         }
                 }
                 break;
-            case parse_phase::real_significand_1:
-                // std::cout << "real_significand_1\n"; 
+            case parse_phase::real_decimal:
+                // std::cout << "real_decimal\n"; 
                 switch(*c) {
                     case '.':
-                        phase = parse_phase::real_significand_2;
+                        phase = parse_phase::real_significand_1;
                         break;
                     default:
                         return parsed_number(c, static_cast<int64_t>(0));
                 }
                 break;
+            case parse_phase::real_significand_1:
+                switch(*c) {
+                    case '0':
+                        break;
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        implicit_exponent -= 1;
+                        u = u * 10 + (*c - '0');
+                        phase = parse_phase::real_significand_2; 
+                        break;
+                    case 'e':
+                    case 'E':
+                        phase = parse_phase::real_exponent_1; 
+                        break;
+                    default:
+                        int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                        double d;
+                        if (compute_double(exponent, u, &d)) {
+                            return parsed_number(c, d * sign);
+                        } else {
+                            char* e;
+                            d = std::strtod(str, &e);
+                            return parsed_number(e, d);
+                        }
+                }
+                break;
             case parse_phase::real_significand_2:
-                // After decimal
-                // std::cout << "real_significand_2\n"; 
                 switch(*c) {
                     case '0':
                     case '1':
@@ -1063,11 +1130,17 @@ parsed_number parse_number(const char* str, const char* end) {
                     default:
                         //return parsed_number(c, "Expected 'e', 'E' or digit after '.'");
                         int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
-                        return parsed_number(c, static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
+                        double d;
+                        if (compute_double(exponent, u, &d)) {
+                            return parsed_number(c, d * sign);
+                        } else {
+                            char* e;
+                            d = std::strtod(str, &e);
+                            return parsed_number(e, d);
+                        }
                 }
                 break;
             case parse_phase::real_exponent_1:
-                // std::cout << "real_exponent_1\n"; 
                 switch (*c) {
                     case '0':
                         // Ignore leading 0s
@@ -1098,7 +1171,6 @@ parsed_number parse_number(const char* str, const char* end) {
                 }
                 break;
             case parse_phase::real_exponent_2:
-                // std::cout << "real_exponent_2\n"; 
                 switch (*c) {
                     case '0':
                         // Ignore leading 0s
@@ -1118,7 +1190,14 @@ parsed_number parse_number(const char* str, const char* end) {
                     default: {
                         // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
                         int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
-                        return parsed_number(c, static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
+                        double d;
+                        if (compute_double(exponent, u, &d)) {
+                            return parsed_number(c, d * sign);
+                        } else {
+                            char* e;
+                            d = std::strtod(str, &e);
+                            return parsed_number(e, d);
+                        }
                     }
                 }
                 break;
@@ -1140,7 +1219,14 @@ parsed_number parse_number(const char* str, const char* end) {
                     default: {
                         // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
                         int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
-                        return parsed_number(c, static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
+                        double d;
+                        if (compute_double(exponent, u, &d)) {
+                            return parsed_number(c, d * sign);
+                        } else {
+                            char* e;
+                            d = std::strtod(str, &e);
+                            return parsed_number(e, d);
+                        }
                     }
                 }
                 break;
@@ -1166,18 +1252,27 @@ parsed_number parse_number(const char* str, const char* end) {
             } else {
                 return parsed_number(c, "Overflow while parsing signed int");
             }
-        case parse_phase::real_significand_1:
-            return parsed_number(c, 0.0);
-        case parse_phase::real_significand_2:
-            return parsed_number(c, "Expected 'e', 'E' or digit after '.'");
+        case parse_phase::real_decimal:
+            return parsed_number(c, static_cast<int64_t>(0));
         case parse_phase::real_exponent_1:
-            return parsed_number(c, "Expected '+', '-', or digit while parsing exponent");
+            return parsed_number(c, "Expected digits after exponent signifier");
+        case parse_phase::real_significand_1:
+            // fallthrough
+        case parse_phase::real_significand_2:
+            // fallthrough
         case parse_phase::real_exponent_2:
             // fallthrough
         case parse_phase::real_exponent_3: {
             // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
             int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign);
-            return parsed_number(c, static_cast<double>(u) * pow(10.0, static_cast<double>(exponent)) * sign);
+            double d;
+            if (compute_double(exponent, u, &d)) {
+                return parsed_number(c, d * sign);
+            } else {
+                char* e;
+                d = std::strtod(str, &e);
+                return parsed_number(e, d);
+            }
         }
     }
 }
