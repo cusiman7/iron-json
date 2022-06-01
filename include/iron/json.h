@@ -11,14 +11,13 @@
 #include <cassert>
 #include <cfloat>
 
+namespace fe {
 namespace {
-
 template <typename T>
 bool within_limits(int64_t n) {
     return n >= std::numeric_limits<T>::min() && n <= std::numeric_limits<T>::max();
 }
-
-}
+} // namespace
 
 template <typename E>
 struct error {
@@ -1725,4 +1724,6 @@ result<json, const char*> parse(const std::string& s) {
     stack.pop();
     return j;
 }
+
+} // namespace fe
 

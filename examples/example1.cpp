@@ -4,6 +4,8 @@
 #include <fstream>
 #include <vector>
 
+using namespace fe;
+
 std::string read_file(const char* path) {
     if(std::ifstream is{path, std::ios::binary | std::ios::ate}) {
         auto size = is.tellg();

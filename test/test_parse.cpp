@@ -3,6 +3,8 @@
 
 #include <iron/json.h>
 
+using namespace fe;
+
 TEST("parse numbers") {
     {
         CHECK(!parse(""));

@@ -12,9 +12,8 @@ add_executable(example1
 )
 target_link_libraries(example1 ironjson)
 
-add_executable(tests
+add_executable(test
     test/test.cpp
     test/test_parse.cpp
 )
-target_link_libraries(tests ironjson)
-set_target_properties(tests PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_link_libraries(test ironjson)

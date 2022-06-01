@@ -2,3 +2,5 @@
 json
 *.DSYM/
 build/
+debug/
+release/
