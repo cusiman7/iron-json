@@ -1,5 +1,5 @@
 
-#include "json.h"
+#include <iron/json.h>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -18,11 +18,11 @@ std::string read_file(const char* path) {
 
 int main(int argc, const char** argv) {
     if (argc > 1) {
-        std::optional<json> j = parse(read_file(argv[1]));
+        result<json, const char*> j = parse(read_file(argv[1]));
         if (j) {
-            std::cout << *j << "\n";
+            std::cout << j.value() << "\n";
         } else {
-            std::cout << "nope\n";
+            std::cout << j.error();
         }
         return 0;
     }
@@ -231,29 +231,29 @@ int main(int argc, const char** argv) {
     }
 
     {
-        std::optional<json> j = parse("1234");
-        std::cout << *j << "\n";
+        result<json, const char*> j = parse("1234");
+        std::cout << j.value() << "\n";
     }
 
     {
-        std::cout << *parse("null") << "\n";
+        std::cout << parse("null").value() << "\n";
         parse("nulf");
         parse("nil");
-        std::cout << *parse("true") << "\n";
+        std::cout << parse("true").value() << "\n";
         parse("tru");
         parse("truf");
-        std::cout << *parse("false") << "\n";
+        std::cout << parse("false").value() << "\n";
         parse("fal");
         parse("falsf");
     
     }
     
     {
-        std::cout << *parse("\"Hello World\"") << "\n";
+        std::cout << parse("\"Hello World\"").value() << "\n";
     }
     
     {
-        std::cout << *parse("[]") << "\n";
+        std::cout << parse("[]").value() << "\n";
         parse("[");
         std::string s;
         s.reserve(10000);
@@ -261,21 +261,21 @@ int main(int argc, const char** argv) {
             s.append("[");
         }
         parse(s);
-        std::cout << *parse("[1, true, false]") << "\n";
-        std::cout << *parse("[\"hi\", true, false]") << "\n";
-        std::cout << *parse("[1, true, false, [1.2, false, []]]") << "\n";
-        std::cout << *parse("[{\"hi\": true}, false]") << "\n";
+        std::cout << parse("[1, true, false]").value() << "\n";
+        std::cout << parse("[\"hi\", true, false]").value() << "\n";
+        std::cout << parse("[1, true, false, [1.2, false, []]]").value() << "\n";
+        std::cout << parse("[{\"hi\": true}, false]").value() << "\n";
     }
     
     {
-        std::cout << *parse("{}") << "\n";
+        std::cout << parse("{}").value() << "\n";
         parse("{{");
-        std::cout << *parse(R"({"key": true, "key2": false, "key3": null, "key4": 123})") << "\n";
-        std::cout << *parse(R"({"key": true, "key2": {"key3": null, "key4": 123}})") << "\n";
+        std::cout << parse(R"({"key": true, "key2": false, "key3": null, "key4": 123})").value() << "\n";
+        std::cout << parse(R"({"key": true, "key2": {"key3": null, "key4": 123}})").value() << "\n";
     }
 
     {
-        std::cout << *parse(R"({"key": true, "key2": [null, "key4", 123]})") << "\n";
-        std::cout << *parse(R"([{"key": true}, {"key2": [null, "str4", 123]}])") << "\n";
+        std::cout << parse(R"({"key": true, "key2": [null, "key4", 123]})").value() << "\n";
+        std::cout << parse(R"([{"key": true}, {"key2": [null, "str4", 123]}])").value() << "\n";
     }
 }

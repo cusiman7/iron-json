@@ -1,7 +1,7 @@
 
 #include "test.h"
 
-#include "../json.h"
+#include <iron/json.h>
 
 TEST("parse numbers") {
     {
@@ -10,31 +10,31 @@ TEST("parse numbers") {
     {
         auto j = parse("  0  ");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_int());
-        CHECK(*j->get<int64_t>() == 0);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_int());
+        CHECK(*j.value().get<int64_t>() == 0);
     }
     {
         auto j = parse("-0");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_int());
-        CHECK(*j->get<int64_t>() == 0);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_int());
+        CHECK(*j.value().get<int64_t>() == 0);
     }
     {
         auto j = parse("1");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_uint());
-        CHECK(*j->get<uint64_t>() == 1);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_uint());
+        CHECK(*j.value().get<uint64_t>() == 1);
     }
     {
         // largest uint64_t
         auto j = parse("18446744073709551615");
         REQUIRE(j);
-        REQUIRE(j->is_number());
-        REQUIRE(j->is_uint());
-        CHECK(*j->get<uint64_t>() == 18446744073709551615u);
+        REQUIRE(j.value().is_number());
+        REQUIRE(j.value().is_uint());
+        CHECK(*j.value().get<uint64_t>() == 18446744073709551615u);
     }
     {
         // largest uint64_t + 1
@@ -44,9 +44,9 @@ TEST("parse numbers") {
         // smallest int64_t
         auto j = parse("-9223372036854775808");
         REQUIRE(j);
-        REQUIRE(j->is_number());
-        REQUIRE(j->is_int());
-        CHECK(*j->get<int64_t>() == -9223372036854775807LL - 1LL);
+        REQUIRE(j.value().is_number());
+        REQUIRE(j.value().is_int());
+        CHECK(*j.value().get<int64_t>() == -9223372036854775807LL - 1LL);
     }
     {
         // smallest int64_t - 1
@@ -56,61 +56,61 @@ TEST("parse numbers") {
         // mass of earth
         auto j = parse("5.972E+24");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_double());
-        CHECK(*j->get<double>() == 5.972e24);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_double());
+        CHECK(*j.value().get<double>() == 5.972e24);
     }
     {
         // -mass of earth
         auto j = parse("-5.972E+24");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_double());
-        CHECK(*j->get<double>() == -5.972e24);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_double());
+        CHECK(*j.value().get<double>() == -5.972e24);
     }
     {
         // mass of electron
         auto j = parse("9.109e-31");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_double());
-        CHECK(*j->get<double>() == 9.109e-31);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_double());
+        CHECK(*j.value().get<double>() == 9.109e-31);
     }
     {
         // -mass of electron
         auto j = parse("-9.109e-31");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_double());
-        CHECK(*j->get<double>() == -9.109e-31);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_double());
+        CHECK(*j.value().get<double>() == -9.109e-31);
     }
     {
         auto j = parse("-1e1");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_double());
-        CHECK(*j->get<double>() == -10);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_double());
+        CHECK(*j.value().get<double>() == -10);
     }
     {
         auto j = parse("-0.0e0");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_double());
-        CHECK(*j->get<double>() == -0);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_double());
+        CHECK(*j.value().get<double>() == -0);
     }
     {
         auto j = parse("-0.0E0");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_double());
-        CHECK(*j->get<double>() == -0);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_double());
+        CHECK(*j.value().get<double>() == -0);
     }
     {
         auto j = parse("-0.0E+000001");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_double());
-        CHECK(*j->get<double>() == -0);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_double());
+        CHECK(*j.value().get<double>() == -0);
     }
     {
         CHECK(!parse("-0.0e"));
@@ -124,9 +124,9 @@ TEST("parse numbers") {
     {
         auto j = parse("1.2");
         REQUIRE(j);
-        CHECK(j->is_number());
-        CHECK(j->is_double());
-        CHECK(*j->get<double>() == 1.2);
+        CHECK(j.value().is_number());
+        CHECK(j.value().is_double());
+        CHECK(*j.value().get<double>() == 1.2);
     }
     {
         CHECK(!parse("1.2,"));
@@ -142,27 +142,27 @@ TEST("parse strings") {
     {
         auto j = parse(R"("")"); 
         REQUIRE(j);
-        CHECK(j->get<std::string>().value() == "");
+        CHECK(j.value().get<std::string>().value() == "");
     }
     {
         auto j = parse(R"("\n")"); 
         REQUIRE(j);
-        CHECK(j->get<std::string>().value() == R"(\n)");
+        CHECK(j.value().get<std::string>().value() == R"(\n)");
     }
     {
         auto j = parse(R"("\\n")"); 
         REQUIRE(j);
-        CHECK(j->get<std::string>().value() == R"(\\n)");
+        CHECK(j.value().get<std::string>().value() == R"(\\n)");
     }
     {
         auto j = parse(R"("HelloWorld")"); 
         REQUIRE(j);
-        CHECK(j->get<std::string>().value() == "HelloWorld");
+        CHECK(j.value().get<std::string>().value() == "HelloWorld");
     }
     {
         auto j = parse(R"("HelloWorld\n")"); 
         REQUIRE(j);
-        CHECK(j->get<std::string>().value() == R"(HelloWorld\n)");
+        CHECK(j.value().get<std::string>().value() == R"(HelloWorld\n)");
     }
 }
 
@@ -202,7 +202,7 @@ TEST("parse null false true") {
 TEST("parse array") {
     auto j = parse("[]");
     REQUIRE(j);
-    CHECK(j->is_array());
+    CHECK(j.value().is_array());
     CHECK(!parse("["));
     CHECK(!parse("]"));
     CHECK(parse("[1, true, false]"));
@@ -214,7 +214,7 @@ TEST("parse array") {
 TEST("parse object") {
     auto j = parse("{}");
     REQUIRE(j);
-    CHECK(j->is_object());
+    CHECK(j.value().is_object());
     CHECK(!parse("{"));
     CHECK(!parse("}"));
     CHECK(parse(R"({"key": true, "key2": false, "key3": null, "key4": 123})"));

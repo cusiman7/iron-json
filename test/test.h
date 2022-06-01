@@ -2,7 +2,6 @@
 #pragma once
 
 #include <type_traits>
-#include <optional>
 #include <sstream>
 #include <stdexcept>
 
@@ -21,11 +20,6 @@ std::string to_string(const T& t) {
     std::stringstream ss;
     ss << t;
     return ss.str();
-}
-
-template <typename T>
-std::string to_string(const std::optional<T>& t) {
-    return t ? to_string(t.value()) : "std::nullopt";
 }
 
 inline std::string to_string(const bool& b) {
