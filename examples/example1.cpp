@@ -4,7 +4,7 @@
 #include <fstream>
 #include <vector>
 
-using namespace fe;
+using fe::json;
 
 std::string read_file(const char* path) {
     if(std::ifstream is{path, std::ios::binary | std::ios::ate}) {
@@ -20,7 +20,7 @@ std::string read_file(const char* path) {
 
 int main(int argc, const char** argv) {
     if (argc > 1) {
-        result<json, const char*> j = parse(read_file(argv[1]));
+        auto j = json::parse(read_file(argv[1]));
         if (j) {
             std::cout << j.value() << "\n";
         } else {
@@ -40,9 +40,9 @@ int main(int argc, const char** argv) {
 
     {
         json j = 127;
-        std::cout << static_cast<int>(*j.get<int8_t>()) << "\n";
+        std::cout << static_cast<int>(j.get<int8_t>().value()) << "\n";
         j = -128;
-        std::cout << static_cast<int>(*j.get<int8_t>()) << "\n";
+        std::cout << static_cast<int>(j.get<int8_t>().value()) << "\n";
     }
     
     for (auto& it : j) {
@@ -59,10 +59,6 @@ int main(int argc, const char** argv) {
 
     json js("Hello JSON");
     std::cout << js << "\n";
-
-    if (std::optional<std::string> s = js) {
-        std::cout << s.value() << "\n";
-    }
 
     json j3;
     j3.push_back(5);
@@ -157,127 +153,31 @@ int main(int argc, const char** argv) {
         std::cout << j << "\n";
     }
 
-    std::cout << "---parsing---\n";
-
-    std::vector<std::string> strings = {
-        "0",
-        "0,",
-        "-0",
-        "1",
-        "18446744073709551615", // largest uint64_t
-        "18446744073709551616", // largest uint64_t + 1
-        "-9223372036854775808", // smallest int64_t
-        "-9223372036854775809", // smallest int64_t - 1
-        "5.972E+24", // mass of earth
-        "-5.972E+24", // mass of earth
-        "9.109e-31", // mass of electron
-        "-9.109e-31", // mass of electron
-        "-1e-1", // -0.1
-        "-0.0e0", // -0
-        "-0.0e0,", // -0
-        "-0.0e+00001,", // -0
-        "-0.0e", // error
-        "", // error
-        "-", // error
-        "-0.0ee", // error
-        "1.", // 1.2 
-        "1.2", // 1.2 
-        "1.2,", // 1.2 
-        "1.00000000000000000000,", // 1 
-    };
-
-    for (const auto& s : strings) {
-        parsed_number n = parse_number(s.data(), s.data() + s.size());
-        std::cout << "input: '" << s << "' == ";
-        switch (n.type) {
-            case number_t::int_num:
-                std::cout << "int: " << n.i << "\n";
-                break;
-            case number_t::uint_num:
-                std::cout << "uint: " << n.u << "\n";
-                break;
-            case number_t::real_num:
-                std::cout << "real: " << n.d << "\n";
-                break;
-            case number_t::error:
-                std::cout << "error: " << n.what << "\n";
-                break;
-        }
-    }
-
-    std::string ws = " \n\r\tHello";
-    const char* c = skip_whitespace(ws.c_str(), ws.c_str() + ws.size());
-    std::cout << *c << "\n";
-
     {
-        std::vector<std::string> strings = {
-            R"("")",
-            R"("\n")",
-            R"("\\n")",
-            R"("HelloWorld")",
-            R"("HelloWorld\n")",
-            R"("Hello  World\n")",
-            R"("Hello  World\n  \u1234")"
+        json j = {
+            {"key", true},
+            {nullptr, "hi", 123}
         };
-        for (const auto& s : strings) {
-            parsed_string ps = parse_string(s.data(), s.data() + s.size());
-            switch (ps.t) {
-                case parsed_string::type::string:
-                    std::cout << "string: \"" << std::string_view(ps.s.data, ps.s.size) << "\"\n";
-                    break;
-                case parsed_string::type::error:
-                    std::cout << "error: " << ps.error << "\n";
-                    break;
-            }
-        }
+        std::cout << j << "\n";
     }
 
     {
-        result<json, const char*> j = parse("1234");
-        std::cout << j.value() << "\n";
+        json j = json::object(std::pair{"key", 123});
+        std::cout << j << "\n";
     }
 
     {
-        std::cout << parse("null").value() << "\n";
-        parse("nulf");
-        parse("nil");
-        std::cout << parse("true").value() << "\n";
-        parse("tru");
-        parse("truf");
-        std::cout << parse("false").value() << "\n";
-        parse("fal");
-        parse("falsf");
-    
+        json j("hello");
+        std::cout << j << "\n";
+        std::string s = std::move(j).get<std::string>().value(); 
+        std::cout << s << "\n";
+        std::cout << j << "\n";
     }
-    
     {
-        std::cout << parse("\"Hello World\"").value() << "\n";
-    }
-    
-    {
-        std::cout << parse("[]").value() << "\n";
-        parse("[");
-        std::string s;
-        s.reserve(10000);
-        for (int i = 0; i < 10000; i++) {
-            s.append("[");
-        }
-        parse(s);
-        std::cout << parse("[1, true, false]").value() << "\n";
-        std::cout << parse("[\"hi\", true, false]").value() << "\n";
-        std::cout << parse("[1, true, false, [1.2, false, []]]").value() << "\n";
-        std::cout << parse("[{\"hi\": true}, false]").value() << "\n";
-    }
-    
-    {
-        std::cout << parse("{}").value() << "\n";
-        parse("{{");
-        std::cout << parse(R"({"key": true, "key2": false, "key3": null, "key4": 123})").value() << "\n";
-        std::cout << parse(R"({"key": true, "key2": {"key3": null, "key4": 123}})").value() << "\n";
-    }
-
-    {
-        std::cout << parse(R"({"key": true, "key2": [null, "key4", 123]})").value() << "\n";
-        std::cout << parse(R"([{"key": true}, {"key2": [null, "str4", 123]}])").value() << "\n";
+        json j(true);
+        std::cout << j << "\n";
+        auto s = std::move(j).get<bool>().value(); 
+        std::cout << s << "\n";
+        std::cout << j << "\n";
     }
 }

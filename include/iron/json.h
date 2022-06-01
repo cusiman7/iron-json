@@ -8,13 +8,14 @@
 #include <initializer_list>
 #include <iostream>
 #include <stack>
+#include <string_view>
 #include <cassert>
 #include <cfloat>
 
 namespace fe {
 namespace {
-template <typename T>
-bool within_limits(int64_t n) {
+template <typename T, typename U>
+bool within_limits(U n) {
     return n >= std::numeric_limits<T>::min() && n <= std::numeric_limits<T>::max();
 }
 } // namespace
@@ -155,6 +156,10 @@ public:
     }
 };
 
+enum class json_error: uint8_t {
+    invalid_type,
+};
+
 enum class value_t: uint8_t {
     object,
     array,
@@ -165,8 +170,8 @@ enum class value_t: uint8_t {
     boolean,
     null,
 };
-class json;
 
+class json;
 using object_t = std::vector<std::pair<std::string, json>>;
 using array_t = std::vector<json>;
 using string_t = std::string;
@@ -254,7 +259,11 @@ public:
     json(uint64_t num) : type(value_t::uint_num), value(num) {}
     json(double num) : type(value_t::float_num), value(num) {}
     json(bool b) : type(value_t::boolean), value(b) {}
-    
+    json(const object_t& o) : type(value_t::object), value(o) {}
+    json(object_t&& o) : type(value_t::object), value(std::move(o)) {}
+    json(const array_t& o) : type(value_t::array), value(o) {}
+    json(array_t&& o) : type(value_t::array), value(std::move(o)) {}
+
     json(std::initializer_list<json> init) {
         bool looks_like_object = true;
         for (const auto& it : init) {
@@ -268,17 +277,7 @@ public:
             value = object_t();
             value.object->reserve(init.size());
             for (auto& it : init) {
-                bool found = false;
-                for (auto& nv : *value.object) {
-                    if (nv.first == *it[0].get<std::string>()) {
-                        found = true;
-                        nv.second = std::move(it[1]);
-                        break;
-                    }
-                }
-                if (!found) {
-                    value.object->push_back({*it[0].get<std::string>(), std::move(it[1])});
-                }
+                value.object->push_back({it[0].get<std::string>().value(), std::move(it[1])});
             }
         } else {
             type = value_t::array;
@@ -291,17 +290,16 @@ public:
     }
 
     static json object(const object_t& o) {
-        json j;
-        j.type = value_t::object;
-        j.value = o;
-        return j;
+        return json(o);
     }
     
     static json object(object_t&& o) {
-        json j;
-        j.type = value_t::object;
-        j.value = std::move(o);
-        return j;
+        return json(std::move(o));
+    }
+    
+    template <typename ...Args>
+    static json object(Args&& ...args) {
+        return json(object_t{std::forward<Args>(args)...});
     }
     
     static json array() {
@@ -309,17 +307,16 @@ public:
     }
 
     static json array(const array_t& a) {
-        json j;
-        j.type = value_t::array;
-        j.value = a;
-        return j;
+        return json(a);
     }
     
     static json array(array_t&& a) {
-        json j;
-        j.type = value_t::array;
-        j.value = std::move(a);
-        return j;
+        return json(std::move(a));
+    }
+    
+    template <typename ...Args>
+    static json array(Args&& ...args) {
+        return json(array_t{std::forward<Args>(args)...});
     }
 
     json(const json& other) : type(other.type) {
@@ -479,88 +476,173 @@ public:
     inline bool is_null() const { return type == value_t::null; }
 
     template <typename T>
-    std::optional<T> get() const;
+    result<T, json_error> get() const&;
+
+    template <typename T>
+    result<T, json_error> get() &&;
 
     template <>
-    std::optional<string_t> get<std::string>() const {
-        return is_string() ? std::optional<string_t>(*value.string) : std::nullopt;
-    }
-    
-    operator std::optional<string_t>() const {
-        return get<string_t>();
+    result<string_t, json_error> get<std::string>() const& {
+        if (is_string()) {
+            return *value.string;
+        }
+        return error(json_error::invalid_type);
     }
     
     template <>
-    std::optional<bool> get<bool>() const {
-        return is_boolean() ? std::optional<bool>(value.boolean) : std::nullopt;
+    result<string_t, json_error> get<std::string>() && {
+        if (is_string()) {
+            return std::move(*value.string);
+        }
+        return error(json_error::invalid_type);
+    }
+    
+    template <>
+    result<bool, json_error> get<bool>() const& {
+        if (is_boolean()) {
+            return bool(value.boolean);
+        }
+        return error(json_error::invalid_type);
+    }
+    
+    template <>
+    result<bool, json_error> get<bool>() && {
+        if (is_boolean()) {
+            return bool(value.boolean);
+        }
+        return error(json_error::invalid_type);
     }
 
     template <>
-    std::optional<int8_t> get<int8_t>() const {
+    result<int8_t, json_error> get<int8_t>() const& {
         if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
             return value.int_num;
         }
-        return std::nullopt;
+        return error(json_error::invalid_type);
+    }
+    
+    template <>
+    result<int8_t, json_error> get<int8_t>() && {
+        if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return error(json_error::invalid_type);
     }
 
     template <>
-    std::optional<int16_t> get<int16_t>() const {
+    result<int16_t, json_error> get<int16_t>() const& {
         if (type == value_t::int_num && within_limits<int16_t>(value.int_num)) {
             return value.int_num;
         }
-        return std::nullopt;
+        return error(json_error::invalid_type);
     }
 
     template <>
-    std::optional<int32_t> get<int32_t>() const {
+    result<int16_t, json_error> get<int16_t>() && {
+        if (type == value_t::int_num && within_limits<int16_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return error(json_error::invalid_type);
+    }
+
+    template <>
+    result<int32_t, json_error> get<int32_t>() const& {
         if (type == value_t::int_num && within_limits<int32_t>(value.int_num)) {
             return value.int_num;
         }
-        return std::nullopt;
+        return error(json_error::invalid_type);
+    }
+
+    template <>
+    result<int32_t, json_error> get<int32_t>() && {
+        if (type == value_t::int_num && within_limits<int32_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return error(json_error::invalid_type);
     }
     
     template <>
-    std::optional<int64_t> get<int64_t>() const {
+    result<int64_t, json_error> get<int64_t>() const& {
         if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
             return value.int_num;
         }
-        return std::nullopt;
+        return error(json_error::invalid_type);
     }
     
     template <>
-    std::optional<uint8_t> get<uint8_t>() const {
+    result<int64_t, json_error> get<int64_t>() && {
+        if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
+            return value.int_num;
+        }
+        return error(json_error::invalid_type);
+    }
+    
+    template <>
+    result<uint8_t, json_error> get<uint8_t>() const& {
         if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return std::nullopt;
+        return error(json_error::invalid_type);
     }
     
     template <>
-    std::optional<uint16_t> get<uint16_t>() const {
+    result<uint8_t, json_error> get<uint8_t>() && {
+        if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
+            return value.uint_num;
+        }
+        return error(json_error::invalid_type);
+    }
+    
+    template <>
+    result<uint16_t, json_error> get<uint16_t>() const& {
         if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return std::nullopt;
+        return error(json_error::invalid_type);
     }
     
     template <>
-    std::optional<uint32_t> get<uint32_t>() const {
+    result<uint16_t, json_error> get<uint16_t>() && {
+        if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
+            return value.uint_num;
+        }
+        return error(json_error::invalid_type);
+    }
+    
+    template <>
+    result<uint32_t, json_error> get<uint32_t>() const& {
         if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return std::nullopt;
+        return error(json_error::invalid_type);
     }
     
     template <>
-    std::optional<uint64_t> get<uint64_t>() const {
+    result<uint32_t, json_error> get<uint32_t>() && {
+        if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
+            return value.uint_num;
+        }
+        return error(json_error::invalid_type);
+    }
+    
+    template <>
+    result<uint64_t, json_error> get<uint64_t>() const& {
         if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return std::nullopt;
+        return error(json_error::invalid_type);
     }
     
     template <>
-    std::optional<float> get<float>() const {
+    result<uint64_t, json_error> get<uint64_t>() && {
+        if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
+            return value.uint_num;
+        }
+        return error(json_error::invalid_type);
+    }
+    
+    template <>
+    result<float, json_error> get<float>() const& {
         switch (type) {
             case value_t::float_num:
                 return value.float_num;
@@ -569,12 +651,12 @@ public:
             case value_t::uint_num: 
                 return value.uint_num;
             default:
-                return std::nullopt;
+                return error(json_error::invalid_type);
         }
     }
     
     template <>
-    std::optional<double> get<double>() const {
+    result<float, json_error> get<float>() && {
         switch (type) {
             case value_t::float_num:
                 return value.float_num;
@@ -583,7 +665,35 @@ public:
             case value_t::uint_num: 
                 return value.uint_num;
             default:
-                return std::nullopt;
+                return error(json_error::invalid_type);
+        }
+    }
+    
+    template <>
+    result<double, json_error> get<double>() const& {
+        switch (type) {
+            case value_t::float_num:
+                return value.float_num;
+            case value_t::int_num:
+                return value.int_num;
+            case value_t::uint_num: 
+                return value.uint_num;
+            default:
+                return error(json_error::invalid_type);
+        }
+    }
+    
+    template <>
+    result<double, json_error> get<double>() && {
+        switch (type) {
+            case value_t::float_num:
+                return value.float_num;
+            case value_t::int_num:
+                return value.int_num;
+            case value_t::uint_num: 
+                return value.uint_num;
+            default:
+                return error(json_error::invalid_type);
         }
     }
 
@@ -942,788 +1052,789 @@ public:
         }
         std::abort();
     }
-};
 
-// Parsing
-struct string {
-    const char* data;
-    size_t size;
-};
+    static result<json, const char*> parse(const std::string& s) {
+        // The stack holds partial arrays and partial objects.
+        // Arrays are stored on the stack as-is.
+        // Partial objects are stored by first storing the object itself, then they parsed key
+        std::stack<json> stack;
+        const char* c = s.data();
+        const char* cend = c + s.size();
 
-struct parsed_string {
-    enum class type {
-        string,
-        error,
-    };
-    const char* end;
-    type t;
-    union {
-        string s;
-        const char* error;
-    };
-
-    parsed_string(const char* end, string s) : end(end), t(type::string), s(s) {}
-    parsed_string(const char* end, const char* e) : end(end), t(type::error), error(e) {}
-};
-
-parsed_string parse_string(const char* c, const char* cend) {
-    assert(*c == '"');
-    c++;
-    const char* data = c;
-
-    // TODO: UTF-8 validation
-    while (c != cend - 1) {
-        if (c[0] == '\\') {
-            switch (c[1]) {
-                case '"':
-                case '\\':
-                case '/':
-                case 'b':
-                case 'f':
-                case 'n':
-                case 'r':
-                case 't':
-                    c += 2;
+        auto parse_value = [&]() -> result<json, const char*> {
+            c = skip_whitespace(c, cend);
+            if (c == cend) {
+                return error<const char*>("Unexpected end of string while parsing value");
+            }
+            switch (*c) {
+                case '{': // Begin object
+                    c = skip_whitespace(c + 1, cend);
+                    return json::object();
+                case '[': // Begin array
+                    c = skip_whitespace(c + 1, cend);
+                    return json::array();
+                case '"': { // Begin String
+                    parsed_string ps = parse_string(c, cend);
+                    switch (ps.t) {
+                        case parsed_string::type::string:
+                            assert(*c == '"');
+                            c = skip_whitespace(ps.end + 1, cend);
+                            return json(std::string(ps.s.data, ps.s.size));
+                        case parsed_string::type::error:
+                            c = ps.end; 
+                            return error(ps.error);
+                    }
                     break;
-                case 'u':
-                    // TODO: 4 hex digits
-                    return parsed_string(c, "\\u Hex digits are not supported\n");
-            }
-        } else if (c[0] == '"') {
-            return parsed_string(c, string{data, static_cast<size_t>(c - data)});
-        } else if (c[1] == '"') {
-            c++;
-            return parsed_string(c, string{data, static_cast<size_t>(c - data)});
-        } else {
-            c++;
-        }
-    }
-
-    if (c[0] == '"') {
-        return parsed_string(c, string{data, static_cast<size_t>(c - data)});
-    }
-
-    return parsed_string(c, "Unexpected end of string while parsing string");
-}
-
-enum class number_t {
-    int_num,
-    uint_num,
-    real_num,    
-    error,
-};
-
-struct parsed_number {
-    const char* end;
-    number_t type;
-    union {
-        int64_t i;
-        uint64_t u;
-        double d;
-        const char* what;
-    };
-
-    parsed_number(const char* end, int64_t i) : end(end), type(number_t::int_num), i(i) {}
-    parsed_number(const char* end, uint64_t u) : end(end), type(number_t::uint_num), u(u) {}
-    parsed_number(const char* end, double d) : end(end), type(number_t::real_num), d(d) {}
-    parsed_number(const char* end, const char* w) : end(end), type(number_t::error), what(w) {}
-};
-
-// https://github.com/simdjson/simdjson/blob/730939f01c7bd4aff103c6523697c3f70484a322/include/simdjson/generic/numberparsing.h#L55
-bool compute_double(int64_t power, uint64_t i, double* d) {
-#ifndef FLT_EVAL_METHOD
-#error "FLT_EVAL_METHOD should be defined, please include cfloat."
-#endif
-#if (FLT_EVAL_METHOD != 1) && (FLT_EVAL_METHOD != 0)
-    // We cannot be certain that x/y is rounded to nearest.
-    if (0 <= power && power <= 22 && i <= 9007199254740991) {
-#else
-    if (-22 <= power && power <= 22 && i <= 9007199254740991) {
-#endif
-        // convert the integer into a double. This is lossless since
-        // 0 <= i <= 2^53 - 1.
-        *d = double(i);
-        //
-        // The general idea is as follows.
-        // If 0 <= s < 2^53 and if 10^0 <= p <= 10^22 then
-        // 1) Both s and p can be represented exactly as 64-bit floating-point
-        // values
-        // (binary64).
-        // 2) Because s and p can be represented exactly as floating-point values,
-        // then s * p
-        // and s / p will produce correctly rounded values.
-        //
-        if (power < 0) {
-            *d = *d / pow(10.0, -power);
-        } else {
-            *d = *d * pow(10.0, power);
-        }
-        return true;
-    }
-    return false;
-}
-
-parsed_number parse_number(const char* str, const char* end) {
-    enum class parse_phase {
-        begin, // Allows '-' or any digit
-        unsigned_digits, // 1-9 or '.' 
-        signed_digits_1, // Follows leading '-'. Any digit but 0 promotes to real
-        signed_digits_2, // any digit, '.', 'e', or 'E' promotes to real
-        real_decimal, // Can only be '0.'
-        real_significand_1, // First digit of significand after '.'. Ignores leading 0s
-        real_significand_2, // significand after '.'
-        real_exponent_1, // exponent immediatley after 'e' or 'E'. '+' or '-' or any digit
-        real_exponent_2, // any digit, 0s ignored
-        real_exponent_3, // any digit, 0s not ignored
-    };
- 
-    const char* c = str;
-    const char* c_begin = str;
-    const char* cend = end;
-
-    const char* error = nullptr;
-    int sign = 1;
-    uint64_t u = 0;
-    int exponent_sign = 1;
-    int64_t implicit_exponent = 0;
-    uint64_t explicit_exponent = 0;
-    parse_phase phase = parse_phase::begin;
-
-    for (;c != cend;++c) {
-        switch(phase) {
-            case parse_phase::begin:
-                // std::cout << "begin\n"; 
-                switch(*c) {
-                    case '-':
-                        sign = -1;
-                        phase = parse_phase::signed_digits_1;
-                        break;
-                    case '0':
-                        phase = parse_phase::real_decimal;
-                        break; 
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                        phase = parse_phase::unsigned_digits;
-                        u = u * 10 + (*c - '0');
-                        break;
-                    default:
-                        return parsed_number(c, "Unexpected token when parsing number");
                 }
-                break;
-            case parse_phase::unsigned_digits:
-                // std::cout << "unsigned_digits\n"; 
-                switch(*c) {
-                    case '0':
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                        u = u * 10 + (*c - '0');
-                        break;
-                    case '.':
-                        phase = parse_phase::real_significand_1;
-                        break;
-                    case 'e':
-                    case 'E':
-                        phase = parse_phase::real_exponent_1;
-                    default:
-                        // Return unsigned number
-                        if (c - c_begin <= 19 || (c - c_begin == 20 && u >= 10000000000000000000ull)) {
-                            return parsed_number(c, u);
-                        } else {
-                            return parsed_number(c, "Overflow while parsing unsigned int");
-                        }
-                }
-                break;
-            case parse_phase::signed_digits_1:
-                // std::cout << "signed_digits_1\n"; 
-                switch(*c) {
-                    case '0':
-                        phase = parse_phase::real_decimal;
-                        break; 
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                        phase = parse_phase::signed_digits_2;
-                        u = u * 10 + (*c - '0');
-                        break;
-                    default:
-                        return parsed_number(c, "Expected digit after '-'");
-                }
-                break;
-            case parse_phase::signed_digits_2:
-                // std::cout << "signed_digits_2\n"; 
-                switch(*c) {
-                    case '0':
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                        u = u * 10 + (*c - '0');
-                        break;
-                    case '.':
-                        phase = parse_phase::real_significand_1;
-                        break;
-                    case 'e':
-                    case 'E':
-                        phase = parse_phase::real_exponent_1;
-                        break;
-                    default:
-                        if (u <= 9223372036854775808ull) {
-                            return parsed_number(c, -1 * static_cast<int64_t>(u));
-                        } else {
-                            return parsed_number(c, "Overflow while parsing signed int");
-                        }
-                }
-                break;
-            case parse_phase::real_decimal:
-                // std::cout << "real_decimal\n"; 
-                switch(*c) {
-                    case '.':
-                        phase = parse_phase::real_significand_1;
-                        break;
-                    default:
-                        return parsed_number(c, static_cast<int64_t>(0));
-                }
-                break;
-            case parse_phase::real_significand_1:
-                switch(*c) {
-                    case '0':
-                        break;
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                        implicit_exponent -= 1;
-                        u = u * 10 + (*c - '0');
-                        phase = parse_phase::real_significand_2; 
-                        break;
-                    case 'e':
-                    case 'E':
-                        phase = parse_phase::real_exponent_1; 
-                        break;
-                    default:
-                        int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
-                        double d;
-                        if (compute_double(exponent, u, &d)) {
-                            return parsed_number(c, d * sign);
-                        } else {
-                            char* e;
-                            d = std::strtod(str, &e);
-                            return parsed_number(e, d);
-                        }
-                }
-                break;
-            case parse_phase::real_significand_2:
-                switch(*c) {
-                    case '0':
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                        implicit_exponent -= 1;
-                        u = u * 10 + (*c - '0');
-                        break;
-                    case 'e':
-                    case 'E':
-                        phase = parse_phase::real_exponent_1;
-                        break;
-                    default:
-                        //return parsed_number(c, "Expected 'e', 'E' or digit after '.'");
-                        int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
-                        double d;
-                        if (compute_double(exponent, u, &d)) {
-                            return parsed_number(c, d * sign);
-                        } else {
-                            char* e;
-                            d = std::strtod(str, &e);
-                            return parsed_number(e, d);
-                        }
-                }
-                break;
-            case parse_phase::real_exponent_1:
-                switch (*c) {
-                    case '0':
-                        // Ignore leading 0s
-                        phase = parse_phase::real_exponent_2;
-                        break;
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                        explicit_exponent = explicit_exponent * 10 + (*c - '0');
-                        phase = parse_phase::real_exponent_3;
-                        break;
-                    case '-':
-                        exponent_sign = -1;
-                        phase = parse_phase::real_exponent_3;
-                        break;
-                    case '+':
-                        exponent_sign = 1;
-                        phase = parse_phase::real_exponent_3;
-                        break;
-                    default:
-                        return parsed_number(c, "Expected '+', '-', or digit while parsing exponent");
-                }
-                break;
-            case parse_phase::real_exponent_2:
-                switch (*c) {
-                    case '0':
-                        // Ignore leading 0s
-                        break;
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                        explicit_exponent = explicit_exponent * 10 + (*c - '0');
-                        phase = parse_phase::real_exponent_3;
-                        break;
-                    default: {
-                        // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
-                        int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
-                        double d;
-                        if (compute_double(exponent, u, &d)) {
-                            return parsed_number(c, d * sign);
-                        } else {
-                            char* e;
-                            d = std::strtod(str, &e);
-                            return parsed_number(e, d);
-                        }
+                case 't': // begin true
+                    if (cend - c < 4) {
+                        c += cend - c;
+                        return error<const char*>("Unexpected value"); 
+                    } else if (c[1] == 'r' && c[2] == 'u' && c[3] == 'e') {
+                        c = skip_whitespace(c + 4, cend);
+                        return json(true);
+                    } else {
+                        c += 4;
+                        return error<const char*>("Unexpected value"); 
                     }
-                }
-                break;
-            case parse_phase::real_exponent_3:
-                // std::cout << "real_exponent_3\n"; 
-                switch (*c) {
-                    case '0':
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                        explicit_exponent = explicit_exponent * 10 + (*c - '0');
-                        break;
-                    default: {
-                        // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
-                        int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
-                        double d;
-                        if (compute_double(exponent, u, &d)) {
-                            return parsed_number(c, d * sign);
-                        } else {
-                            char* e;
-                            d = std::strtod(str, &e);
-                            return parsed_number(e, d);
-                        }
+                    break;
+                case 'f': // Begin false
+                    if (cend - c < 5) {
+                        c += cend - c;
+                        return error<const char*>("Unexpected value"); 
+                    } else if (c[1] == 'a' && c[2] == 'l' && c[3] == 's' && c[4] == 'e') {
+                        c = skip_whitespace(c + 5, cend);
+                        return json(false);
+                    } else {
+                        c += 5;
+                        return error<const char*>("Unexpected value"); 
                     }
+                    break;
+                case 'n': // begin null
+                    if (cend - c < 4) {
+                        c += cend - c;
+                        return error<const char*>("Unexpected value"); 
+                    } else if (c[1] == 'u' && c[2] == 'l' && c[3] == 'l') {
+                        c = skip_whitespace(c + 4, cend);
+                        return json();
+                    } else {
+                        c += 4;
+                        return error<const char*>("Unexpected value"); 
+                    }
+                    break;
+                case '-':
+                case '0':
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9': { // begin number
+                    parsed_number n = parse_number(c, cend);
+                    switch (n.type) {
+                        case number_t::int_num:
+                            c = n.end;
+                            c = skip_whitespace(c, cend);
+                            return json(n.i);
+                        case number_t::uint_num:
+                            c = n.end;
+                            c = skip_whitespace(c, cend);
+                            return json(n.u);
+                        case number_t::real_num:
+                            c = n.end;
+                            c = skip_whitespace(c, cend);
+                            return json(n.d);
+                        case number_t::error:
+                            return error(n.what);
+                    }
+                    break;
                 }
-                break;
-        }
-    }
-    
-    // We can only be here because we ran out of chars
-    switch (phase) {
-        case parse_phase::begin:
-            return parsed_number(c, "Unexpected end of string while parsing number");
-        case parse_phase::unsigned_digits:
-            // Return unsigned number
-            if (c - c_begin <= 19 || (c - c_begin == 20 && u >= 10000000000000000000ull)) {
-                return parsed_number(c, u);
-            } else {
-                return parsed_number(c, "Overflow while parsing unsigned int");
+                default:
+                    break;
             }
-        case parse_phase::signed_digits_1:
-            return parsed_number(c, "Expected digit after '-'");
-        case parse_phase::signed_digits_2:
-            if (u <= 9223372036854775808ull) {
-                return parsed_number(c, -1 * static_cast<int64_t>(u));
-            } else {
-                return parsed_number(c, "Overflow while parsing signed int");
+            return error<const char*>("Unexpected token");
+        };
+
+        // JSON docs can be single values all by themselves
+        {
+            result<json, const char*> value = parse_value();
+            if (!value) {
+                return value;
+            } else if (!(value.value().is_object() || value.value().is_array())) {
+                // Expect a single value document
+                c = skip_whitespace(c, cend);
+                if (c != cend) {
+                    return error<const char*>("Unexpected character");
+                }
+                return value;
             }
-        case parse_phase::real_decimal:
-            return parsed_number(c, static_cast<int64_t>(0));
-        case parse_phase::real_exponent_1:
-            return parsed_number(c, "Expected digits after exponent signifier");
-        case parse_phase::real_significand_1:
-            // fallthrough
-        case parse_phase::real_significand_2:
-            // fallthrough
-        case parse_phase::real_exponent_2:
-            // fallthrough
-        case parse_phase::real_exponent_3: {
-            // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
-            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign);
-            double d;
-            if (compute_double(exponent, u, &d)) {
-                return parsed_number(c, d * sign);
+
+            // Array or Object
+            stack.push(std::move(value).value());
+        }
+
+        auto end_array_or_object = [&stack]() {
+            assert(stack.top().is_array() || stack.top().is_object());
+            json a_or_o = stack.top();
+            stack.pop();
+
+            assert(stack.top().is_string() || stack.top().is_array());
+            if (stack.top().is_string()) {
+                json key = stack.top();
+                stack.pop();
+
+                assert(stack.top().is_object());
+                stack.top()[std::move(key.get<std::string>()).value()] = std::move(a_or_o);
             } else {
-                char* e;
-                d = std::strtod(str, &e);
-                return parsed_number(e, d);
+                assert(stack.top().is_array());
+                stack.top().push_back(std::move(a_or_o));
             }
-        }
-    }
-}
+        };
 
-inline const char* skip_whitespace(const char* c, const char* cend) {
-    while (c != cend) {
-        switch(*c) {
-            case ' ':
-            case '\n':
-            case '\r':
-            case '\t':
-                break;
-            default:
-                return c;
-        }
-        c++;
-    }
-    return c;
-}
+        while (true) {
+            // Parse Array
+            // Arrays are lists of Values.
+            // Commas "," separate Values.
+            // [ value, value2, ... ]
+            //  ^
 
-result<json, const char*> parse(const std::string& s) {
-    // The stack holds partial arrays and partial objects.
-    // Arrays are stored on the stack as-is.
-    // Partial objects are stored by first storing the object itself, then they parsed key
-    std::stack<json> stack;
-    const char* c = s.data();
-    const char* cend = c + s.size();
+            assert(stack.top().is_array() || stack.top().is_object());
+            if (stack.top().is_array()) {
+                if (!stack.top().empty()) {
+                    c = skip_whitespace(c, cend);
+                    // [ value, value2, ... ]
+                    //                      ^
+                    if (c != cend && *c == ']') {
+                        c++;
+                        if (stack.size() == 1) {
+                            break;
+                        }
+                        end_array_or_object();
+                        continue;
+                    }
 
-    auto parse_value = [&]() -> result<json, const char*> {
-        c = skip_whitespace(c, cend);
-        if (c == cend) {
-            return error<const char*>("Unexpected end of string while parsing value");
-        }
-        switch (*c) {
-            case '{': // Begin object
-                c = skip_whitespace(c + 1, cend);
-                return json::object();
-            case '[': // Begin array
-                c = skip_whitespace(c + 1, cend);
-                return json::array();
-            case '"': { // Begin String
+                    // [ value, value2, ... ]
+                    //        ^
+                    if (c == cend || *c != ',') {
+                        return error<const char*>("Expected ','");
+                    }
+                    c++;
+                }
+
+                // [ value, value2, ... ]
+                //   ^
+                result<json, const char*> value = parse_value();
+                if (!value) {
+                    // [ value, value2, ... ]
+                    //                      ^
+                    if (c != cend && *c == ']') {
+                        c++;
+                        if (stack.size() == 1) {
+                            break;
+                        }
+                        end_array_or_object();
+                        continue;
+                    }
+                    return value;
+                } else if (value.value().is_object() || value.value().is_array()) {
+                    // Stack will be: |value | <- top
+                    //                |array |
+                    stack.push(std::move(value).value());
+                    continue;
+                } else {
+                    stack.top().push_back(std::move(value).value());
+                    continue;
+                }
+            } else {
+                // Parse Object
+                // Objects are unordered sets of Name-Value pairs.
+                // Names must be Strings.
+                // Colons ":" separate Names and Values.
+                // Commas "," separate Name-Value pairs.
+                // { "name": value, "name2": value2, ... }
+                //  ^
+
+                assert(stack.top().is_object());
+
+                if (!stack.top().empty()) {
+                    // { "name": value, "name2": value2, ... }
+                    //                                       ^
+                    c = skip_whitespace(c, cend);
+                    if (c != cend && *c == '}') {
+                        c++;
+                        if (stack.size() == 1) {
+                            break;
+                        }
+                        end_array_or_object();
+                        continue;
+                    }
+
+                    // { "name": value, "name2": value2, ... }
+                    //                ^
+                    if (c == cend || *c != ',') {
+                        return error<const char*>("Expected ','");
+                    }
+                    c++;
+                }
+
+                c = skip_whitespace(c, cend);
+                if (c == cend) {
+                    return error<const char*>("Unexpected end of string while parsing Key");
+                }
+
+                if (*c == '}') {
+                    // { "name": value, "name2": value2, ... }
+                    //                                       ^
+                    c++;
+                    if (stack.size() == 1) {
+                        break;
+                    }
+                    end_array_or_object();
+                    continue;
+                } else if (*c != '"') {
+                    return error<const char*>("Expected start of String for Key");
+                } 
+
+                // { "name": value, "name2": value2, ... }
+                //   ^ 
+                std::string key;
                 parsed_string ps = parse_string(c, cend);
                 switch (ps.t) {
                     case parsed_string::type::string:
-                        assert(*c == '"');
-                        c = skip_whitespace(ps.end + 1, cend);
-                        return json(std::string(ps.s.data, ps.s.size));
+                        c = ps.end + 1;
+                        key = std::string(ps.s.data, ps.s.size);
+                        break;
                     case parsed_string::type::error:
-                        c = ps.end; 
                         return error(ps.error);
                 }
-                break;
-            }
-            case 't': // begin true
-                if (cend - c < 4) {
-                    c += cend - c;
-                    return error<const char*>("Unexpected value"); 
-                } else if (c[1] == 'r' && c[2] == 'u' && c[3] == 'e') {
-                    c = skip_whitespace(c + 4, cend);
-                    return json(true);
-                } else {
-                    c += 4;
-                    return error<const char*>("Unexpected value"); 
-                }
-                break;
-            case 'f': // Begin false
-                if (cend - c < 5) {
-                    c += cend - c;
-                    return error<const char*>("Unexpected value"); 
-                } else if (c[1] == 'a' && c[2] == 'l' && c[3] == 's' && c[4] == 'e') {
-                    c = skip_whitespace(c + 5, cend);
-                    return json(false);
-                } else {
-                    c += 5;
-                    return error<const char*>("Unexpected value"); 
-                }
-                break;
-            case 'n': // begin null
-                if (cend - c < 4) {
-                    c += cend - c;
-                    return error<const char*>("Unexpected value"); 
-                } else if (c[1] == 'u' && c[2] == 'l' && c[3] == 'l') {
-                    c = skip_whitespace(c + 4, cend);
-                    return json();
-                } else {
-                    c += 4;
-                    return error<const char*>("Unexpected value"); 
-                }
-                break;
-            case '-':
-            case '0':
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9': { // begin number
-                parsed_number n = parse_number(c, cend);
-                switch (n.type) {
-                    case number_t::int_num:
-                        c = n.end;
-                        c = skip_whitespace(c, cend);
-                        return json(n.i);
-                    case number_t::uint_num:
-                        c = n.end;
-                        c = skip_whitespace(c, cend);
-                        return json(n.u);
-                    case number_t::real_num:
-                        c = n.end;
-                        c = skip_whitespace(c, cend);
-                        return json(n.d);
-                    case number_t::error:
-                        return error(n.what);
-                }
-                break;
-            }
-            default:
-                break;
-        }
-        return error<const char*>("Unexpected token");
-    };
 
-    // JSON docs can be single values all by themselves
-    {
-        result<json, const char*> value = parse_value();
-        if (!value) {
-            return value;
-        } else if (!(value.value().is_object() || value.value().is_array())) {
-            // Expect a single value document
-            c = skip_whitespace(c, cend);
-            if (c != cend) {
-                return error<const char*>("Unexpected character");
+                // { "name": value, "name2": value2, ... }
+                //         ^
+                c = skip_whitespace(c, cend);
+                if (c == cend || *c != ':') {
+                    return error<const char*>("Expected ':'");
+                }
+                c++;
+                c = skip_whitespace(c, cend);
+
+                // { "name": value, "name2": value2, ... }
+                //           ^
+                result<json, const char*> value = parse_value();
+                if (!value) {
+                    return value;
+                } else if (value.value().is_object() || value.value().is_array()) {
+                    // Stack will be: |value | <- top
+                    //                |key   |
+                    //                |object|
+                    stack.push(std::move(key));
+                    stack.push(std::move(value).value());
+                    continue;
+                } else {
+                    // We parsed a Name and a non-object, non-array Value
+                    stack.top()[key] = std::move(value).value();
+                    continue;
+                }
             }
-            return value;
         }
 
-        // Array or Object
-        stack.push(std::move(value).value());
+        c = skip_whitespace(c, cend);
+        if (c != cend) {
+            return error<const char*>("Unexpected character");
+        }
+
+        assert(stack.size() == 1);
+        json j = stack.top();
+        stack.pop();
+        return j;
     }
 
-    auto end_array_or_object = [&stack]() {
-        assert(stack.top().is_array() || stack.top().is_object());
-        json a_or_o = stack.top();
-        stack.pop();
-
-        assert(stack.top().is_string() || stack.top().is_array());
-        if (stack.top().is_string()) {
-            json key = stack.top();
-            stack.pop();
-
-            assert(stack.top().is_object());
-            stack.top()[*std::move(key.get<std::string>())] = std::move(a_or_o);
-        } else {
-            assert(stack.top().is_array());
-            stack.top().push_back(std::move(a_or_o));
-        }
+//private:
+    // Parsing
+    struct string {
+        const char* data;
+        size_t size;
     };
 
-    while (true) {
-        // Parse Array
-        // Arrays are lists of Values.
-        // Commas "," separate Values.
-        // [ value, value2, ... ]
-        //  ^
+    struct parsed_string {
+        enum class type {
+            string,
+            error,
+        };
+        const char* end;
+        type t;
+        union {
+            string s;
+            const char* error;
+        };
 
-        assert(stack.top().is_array() || stack.top().is_object());
-        if (stack.top().is_array()) {
-            if (!stack.top().empty()) {
-                c = skip_whitespace(c, cend);
-                // [ value, value2, ... ]
-                //                      ^
-                if (c != cend && *c == ']') {
-                    c++;
-                    if (stack.size() == 1) {
+        parsed_string(const char* end, string s) : end(end), t(type::string), s(s) {}
+        parsed_string(const char* end, const char* e) : end(end), t(type::error), error(e) {}
+    };
+
+    static parsed_string parse_string(const char* c, const char* cend) {
+        assert(*c == '"');
+        c++;
+        const char* data = c;
+
+        // TODO: UTF-8 validation
+        while (c != cend - 1) {
+            if (c[0] == '\\') {
+                switch (c[1]) {
+                    case '"':
+                    case '\\':
+                    case '/':
+                    case 'b':
+                    case 'f':
+                    case 'n':
+                    case 'r':
+                    case 't':
+                        c += 2;
                         break;
-                    }
-                    end_array_or_object();
-                    continue;
+                    case 'u':
+                        // TODO: 4 hex digits
+                        return parsed_string(c, "\\u Hex digits are not supported\n");
                 }
-
-                // [ value, value2, ... ]
-                //        ^
-                if (c == cend || *c != ',') {
-                    return error<const char*>("Expected ','");
-                }
+            } else if (c[0] == '"') {
+                return parsed_string(c, string{data, static_cast<size_t>(c - data)});
+            } else if (c[1] == '"') {
                 c++;
-            }
-
-            // [ value, value2, ... ]
-            //   ^
-            result<json, const char*> value = parse_value();
-            if (!value) {
-                // [ value, value2, ... ]
-                //                      ^
-                if (c != cend && *c == ']') {
-                    c++;
-                    if (stack.size() == 1) {
-                        break;
-                    }
-                    end_array_or_object();
-                    continue;
-                }
-                return value;
-            } else if (value.value().is_object() || value.value().is_array()) {
-                // Stack will be: |value | <- top
-                //                |array |
-                stack.push(std::move(value).value());
-                continue;
+                return parsed_string(c, string{data, static_cast<size_t>(c - data)});
             } else {
-                stack.top().push_back(std::move(value).value());
-                continue;
+                c++;
             }
-        } else {
-            // Parse Object
-            // Objects are unordered sets of Name-Value pairs.
-            // Names must be Strings.
-            // Colons ":" separate Names and Values.
-            // Commas "," separate Name-Value pairs.
-            // { "name": value, "name2": value2, ... }
-            //  ^
+        }
 
-            assert(stack.top().is_object());
+        if (c[0] == '"') {
+            return parsed_string(c, string{data, static_cast<size_t>(c - data)});
+        }
 
-            if (!stack.top().empty()) {
-                // { "name": value, "name2": value2, ... }
-                //                                       ^
-                c = skip_whitespace(c, cend);
-                if (c != cend && *c == '}') {
-                    c++;
-                    if (stack.size() == 1) {
-                        break;
+        return parsed_string(c, "Unexpected end of string while parsing string");
+    }
+
+    enum class number_t {
+        int_num,
+        uint_num,
+        real_num,    
+        error,
+    };
+
+    struct parsed_number {
+        const char* end;
+        number_t type;
+        union {
+            int64_t i;
+            uint64_t u;
+            double d;
+            const char* what;
+        };
+
+        parsed_number(const char* end, int64_t i) : end(end), type(number_t::int_num), i(i) {}
+        parsed_number(const char* end, uint64_t u) : end(end), type(number_t::uint_num), u(u) {}
+        parsed_number(const char* end, double d) : end(end), type(number_t::real_num), d(d) {}
+        parsed_number(const char* end, const char* w) : end(end), type(number_t::error), what(w) {}
+    };
+
+    // https://github.com/simdjson/simdjson/blob/730939f01c7bd4aff103c6523697c3f70484a322/include/simdjson/generic/numberparsing.h#L55
+    static bool compute_double(int64_t power, uint64_t i, double* d) {
+    #ifndef FLT_EVAL_METHOD
+    #error "FLT_EVAL_METHOD should be defined, please include cfloat."
+    #endif
+    #if (FLT_EVAL_METHOD != 1) && (FLT_EVAL_METHOD != 0)
+        // We cannot be certain that x/y is rounded to nearest.
+        if (0 <= power && power <= 22 && i <= 9007199254740991) {
+    #else
+        if (-22 <= power && power <= 22 && i <= 9007199254740991) {
+    #endif
+            // convert the integer into a double. This is lossless since
+            // 0 <= i <= 2^53 - 1.
+            *d = double(i);
+            //
+            // The general idea is as follows.
+            // If 0 <= s < 2^53 and if 10^0 <= p <= 10^22 then
+            // 1) Both s and p can be represented exactly as 64-bit floating-point
+            // values
+            // (binary64).
+            // 2) Because s and p can be represented exactly as floating-point values,
+            // then s * p
+            // and s / p will produce correctly rounded values.
+            //
+            if (power < 0) {
+                *d = *d / pow(10.0, -power);
+            } else {
+                *d = *d * pow(10.0, power);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    static parsed_number parse_number(const char* str, const char* end) {
+        enum class parse_phase {
+            begin, // Allows '-' or any digit
+            unsigned_digits, // 1-9 or '.' 
+            signed_digits_1, // Follows leading '-'. Any digit but 0 promotes to real
+            signed_digits_2, // any digit, '.', 'e', or 'E' promotes to real
+            real_decimal, // Can only be '0.'
+            real_significand_1, // First digit of significand after '.'. Ignores leading 0s
+            real_significand_2, // significand after '.'
+            real_exponent_1, // exponent immediatley after 'e' or 'E'. '+' or '-' or any digit
+            real_exponent_2, // any digit, 0s ignored
+            real_exponent_3, // any digit, 0s not ignored
+        };
+     
+        const char* c = str;
+        const char* c_begin = str;
+        const char* cend = end;
+
+        const char* error = nullptr;
+        int sign = 1;
+        uint64_t u = 0;
+        int exponent_sign = 1;
+        int64_t implicit_exponent = 0;
+        uint64_t explicit_exponent = 0;
+        parse_phase phase = parse_phase::begin;
+
+        for (;c != cend;++c) {
+            switch(phase) {
+                case parse_phase::begin:
+                    // std::cout << "begin\n"; 
+                    switch(*c) {
+                        case '-':
+                            sign = -1;
+                            phase = parse_phase::signed_digits_1;
+                            break;
+                        case '0':
+                            phase = parse_phase::real_decimal;
+                            break; 
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                            phase = parse_phase::unsigned_digits;
+                            u = u * 10 + (*c - '0');
+                            break;
+                        default:
+                            return parsed_number(c, "Unexpected token when parsing number");
                     }
-                    end_array_or_object();
-                    continue;
-                }
-
-                // { "name": value, "name2": value2, ... }
-                //                ^
-                if (c == cend || *c != ',') {
-                    return error<const char*>("Expected ','");
-                }
-                c++;
-            }
-
-            c = skip_whitespace(c, cend);
-            if (c == cend) {
-                return error<const char*>("Unexpected end of string while parsing Key");
-            }
-
-            if (*c == '}') {
-                // { "name": value, "name2": value2, ... }
-                //                                       ^
-                c++;
-                if (stack.size() == 1) {
                     break;
-                }
-                end_array_or_object();
-                continue;
-            } else if (*c != '"') {
-                return error<const char*>("Expected start of String for Key");
-            } 
-
-            // { "name": value, "name2": value2, ... }
-            //   ^ 
-            std::string key;
-            parsed_string ps = parse_string(c, cend);
-            switch (ps.t) {
-                case parsed_string::type::string:
-                    c = ps.end + 1;
-                    key = std::string(ps.s.data, ps.s.size);
+                case parse_phase::unsigned_digits:
+                    // std::cout << "unsigned_digits\n"; 
+                    switch(*c) {
+                        case '0':
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                            u = u * 10 + (*c - '0');
+                            break;
+                        case '.':
+                            phase = parse_phase::real_significand_1;
+                            break;
+                        case 'e':
+                        case 'E':
+                            phase = parse_phase::real_exponent_1;
+                        default:
+                            // Return unsigned number
+                            if (c - c_begin <= 19 || (c - c_begin == 20 && u >= 10000000000000000000ull)) {
+                                return parsed_number(c, u);
+                            } else {
+                                return parsed_number(c, "Overflow while parsing unsigned int");
+                            }
+                    }
                     break;
-                case parsed_string::type::error:
-                    return error(ps.error);
+                case parse_phase::signed_digits_1:
+                    // std::cout << "signed_digits_1\n"; 
+                    switch(*c) {
+                        case '0':
+                            phase = parse_phase::real_decimal;
+                            break; 
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                            phase = parse_phase::signed_digits_2;
+                            u = u * 10 + (*c - '0');
+                            break;
+                        default:
+                            return parsed_number(c, "Expected digit after '-'");
+                    }
+                    break;
+                case parse_phase::signed_digits_2:
+                    // std::cout << "signed_digits_2\n"; 
+                    switch(*c) {
+                        case '0':
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                            u = u * 10 + (*c - '0');
+                            break;
+                        case '.':
+                            phase = parse_phase::real_significand_1;
+                            break;
+                        case 'e':
+                        case 'E':
+                            phase = parse_phase::real_exponent_1;
+                            break;
+                        default:
+                            if (u <= 9223372036854775808ull) {
+                                return parsed_number(c, -1 * static_cast<int64_t>(u));
+                            } else {
+                                return parsed_number(c, "Overflow while parsing signed int");
+                            }
+                    }
+                    break;
+                case parse_phase::real_decimal:
+                    // std::cout << "real_decimal\n"; 
+                    switch(*c) {
+                        case '.':
+                            phase = parse_phase::real_significand_1;
+                            break;
+                        default:
+                            return parsed_number(c, static_cast<int64_t>(0));
+                    }
+                    break;
+                case parse_phase::real_significand_1:
+                    switch(*c) {
+                        case '0':
+                            break;
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                            implicit_exponent -= 1;
+                            u = u * 10 + (*c - '0');
+                            phase = parse_phase::real_significand_2; 
+                            break;
+                        case 'e':
+                        case 'E':
+                            phase = parse_phase::real_exponent_1; 
+                            break;
+                        default:
+                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                            double d;
+                            if (compute_double(exponent, u, &d)) {
+                                return parsed_number(c, d * sign);
+                            } else {
+                                char* e;
+                                d = std::strtod(str, &e);
+                                return parsed_number(e, d);
+                            }
+                    }
+                    break;
+                case parse_phase::real_significand_2:
+                    switch(*c) {
+                        case '0':
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                            implicit_exponent -= 1;
+                            u = u * 10 + (*c - '0');
+                            break;
+                        case 'e':
+                        case 'E':
+                            phase = parse_phase::real_exponent_1;
+                            break;
+                        default:
+                            //return parsed_number(c, "Expected 'e', 'E' or digit after '.'");
+                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                            double d;
+                            if (compute_double(exponent, u, &d)) {
+                                return parsed_number(c, d * sign);
+                            } else {
+                                char* e;
+                                d = std::strtod(str, &e);
+                                return parsed_number(e, d);
+                            }
+                    }
+                    break;
+                case parse_phase::real_exponent_1:
+                    switch (*c) {
+                        case '0':
+                            // Ignore leading 0s
+                            phase = parse_phase::real_exponent_2;
+                            break;
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                            explicit_exponent = explicit_exponent * 10 + (*c - '0');
+                            phase = parse_phase::real_exponent_3;
+                            break;
+                        case '-':
+                            exponent_sign = -1;
+                            phase = parse_phase::real_exponent_3;
+                            break;
+                        case '+':
+                            exponent_sign = 1;
+                            phase = parse_phase::real_exponent_3;
+                            break;
+                        default:
+                            return parsed_number(c, "Expected '+', '-', or digit while parsing exponent");
+                    }
+                    break;
+                case parse_phase::real_exponent_2:
+                    switch (*c) {
+                        case '0':
+                            // Ignore leading 0s
+                            break;
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                            explicit_exponent = explicit_exponent * 10 + (*c - '0');
+                            phase = parse_phase::real_exponent_3;
+                            break;
+                        default: {
+                            // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
+                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                            double d;
+                            if (compute_double(exponent, u, &d)) {
+                                return parsed_number(c, d * sign);
+                            } else {
+                                char* e;
+                                d = std::strtod(str, &e);
+                                return parsed_number(e, d);
+                            }
+                        }
+                    }
+                    break;
+                case parse_phase::real_exponent_3:
+                    // std::cout << "real_exponent_3\n"; 
+                    switch (*c) {
+                        case '0':
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                            explicit_exponent = explicit_exponent * 10 + (*c - '0');
+                            break;
+                        default: {
+                            // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
+                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                            double d;
+                            if (compute_double(exponent, u, &d)) {
+                                return parsed_number(c, d * sign);
+                            } else {
+                                char* e;
+                                d = std::strtod(str, &e);
+                                return parsed_number(e, d);
+                            }
+                        }
+                    }
+                    break;
             }
+        }
+        
+        // We can only be here because we ran out of chars
+        switch (phase) {
+            case parse_phase::begin:
+                return parsed_number(c, "Unexpected end of string while parsing number");
+            case parse_phase::unsigned_digits:
+                // Return unsigned number
+                if (c - c_begin <= 19 || (c - c_begin == 20 && u >= 10000000000000000000ull)) {
+                    return parsed_number(c, u);
+                } else {
+                    return parsed_number(c, "Overflow while parsing unsigned int");
+                }
+            case parse_phase::signed_digits_1:
+                return parsed_number(c, "Expected digit after '-'");
+            case parse_phase::signed_digits_2:
+                if (u <= 9223372036854775808ull) {
+                    return parsed_number(c, -1 * static_cast<int64_t>(u));
+                } else {
+                    return parsed_number(c, "Overflow while parsing signed int");
+                }
+            case parse_phase::real_decimal:
+                return parsed_number(c, static_cast<int64_t>(0));
+            case parse_phase::real_exponent_1:
+                return parsed_number(c, "Expected digits after exponent signifier");
+            case parse_phase::real_significand_1:
+                // fallthrough
+            case parse_phase::real_significand_2:
+                // fallthrough
+            case parse_phase::real_exponent_2:
+                // fallthrough
+            case parse_phase::real_exponent_3: {
+                // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
+                int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign);
+                double d;
+                if (compute_double(exponent, u, &d)) {
+                    return parsed_number(c, d * sign);
+                } else {
+                    char* e;
+                    d = std::strtod(str, &e);
+                    return parsed_number(e, d);
+                }
+            }
+        }
+    }
 
-            // { "name": value, "name2": value2, ... }
-            //         ^
-            c = skip_whitespace(c, cend);
-            if (c == cend || *c != ':') {
-                return error<const char*>("Expected ':'");
+    static inline const char* skip_whitespace(const char* c, const char* cend) {
+        while (c != cend) {
+            switch(*c) {
+                case ' ':
+                case '\n':
+                case '\r':
+                case '\t':
+                    break;
+                default:
+                    return c;
             }
             c++;
-            c = skip_whitespace(c, cend);
-
-            // { "name": value, "name2": value2, ... }
-            //           ^
-            result<json, const char*> value = parse_value();
-            if (!value) {
-                return value;
-            } else if (value.value().is_object() || value.value().is_array()) {
-                // Stack will be: |value | <- top
-                //                |key   |
-                //                |object|
-                stack.push(std::move(key));
-                stack.push(std::move(value).value());
-                continue;
-            } else {
-                // We parsed a Name and a non-object, non-array Value
-                stack.top()[key] = std::move(value).value();
-                continue;
-            }
         }
+        return c;
     }
-
-    c = skip_whitespace(c, cend);
-    if (c != cend) {
-        return error<const char*>("Unexpected character");
-    }
-
-    assert(stack.size() == 1);
-    json j = stack.top();
-    stack.pop();
-    return j;
-}
+};
 
 } // namespace fe
 

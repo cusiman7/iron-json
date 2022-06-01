@@ -3,224 +3,224 @@
 
 #include <iron/json.h>
 
-using namespace fe;
+using fe::json;
 
-TEST("parse numbers") {
+TEST("json::parse numbers") {
     {
-        CHECK(!parse(""));
+        CHECK(!json::parse(""));
     }
     {
-        auto j = parse("  0  ");
+        auto j = json::parse("  0  ");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_int());
-        CHECK(*j.value().get<int64_t>() == 0);
+        REQUIRE(j.value().is_int());
+        CHECK(j.value().get<int64_t>().value() == 0);
     }
     {
-        auto j = parse("-0");
+        auto j = json::parse("-0");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_int());
-        CHECK(*j.value().get<int64_t>() == 0);
+        REQUIRE(j.value().is_int());
+        CHECK(j.value().get<int64_t>().value() == 0);
     }
     {
-        auto j = parse("1");
+        auto j = json::parse("1");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_uint());
-        CHECK(*j.value().get<uint64_t>() == 1);
+        REQUIRE(j.value().is_uint());
+        CHECK(j.value().get<uint64_t>().value() == 1);
     }
     {
         // largest uint64_t
-        auto j = parse("18446744073709551615");
+        auto j = json::parse("18446744073709551615");
         REQUIRE(j);
         REQUIRE(j.value().is_number());
         REQUIRE(j.value().is_uint());
-        CHECK(*j.value().get<uint64_t>() == 18446744073709551615u);
+        CHECK(j.value().get<uint64_t>().value() == 18446744073709551615u);
     }
     {
         // largest uint64_t + 1
-        CHECK(!parse("18446744073709551616"));
+        CHECK(!json::parse("18446744073709551616"));
     }
     {
         // smallest int64_t
-        auto j = parse("-9223372036854775808");
+        auto j = json::parse("-9223372036854775808");
         REQUIRE(j);
         REQUIRE(j.value().is_number());
         REQUIRE(j.value().is_int());
-        CHECK(*j.value().get<int64_t>() == -9223372036854775807LL - 1LL);
+        CHECK(j.value().get<int64_t>().value() == -9223372036854775807LL - 1LL);
     }
     {
         // smallest int64_t - 1
-        CHECK(!parse("-9223372036854775809"));
+        CHECK(!json::parse("-9223372036854775809"));
     }
     {
         // mass of earth
-        auto j = parse("5.972E+24");
+        auto j = json::parse("5.972E+24");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_double());
-        CHECK(*j.value().get<double>() == 5.972e24);
+        REQUIRE(j.value().is_double());
+        CHECK(j.value().get<double>().value() == 5.972e24);
     }
     {
         // -mass of earth
-        auto j = parse("-5.972E+24");
+        auto j = json::parse("-5.972E+24");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_double());
-        CHECK(*j.value().get<double>() == -5.972e24);
+        REQUIRE(j.value().is_double());
+        CHECK(j.value().get<double>().value() == -5.972e24);
     }
     {
         // mass of electron
-        auto j = parse("9.109e-31");
+        auto j = json::parse("9.109e-31");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_double());
-        CHECK(*j.value().get<double>() == 9.109e-31);
+        REQUIRE(j.value().is_double());
+        CHECK(j.value().get<double>().value() == 9.109e-31);
     }
     {
         // -mass of electron
-        auto j = parse("-9.109e-31");
+        auto j = json::parse("-9.109e-31");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_double());
-        CHECK(*j.value().get<double>() == -9.109e-31);
+        REQUIRE(j.value().is_double());
+        CHECK(j.value().get<double>().value() == -9.109e-31);
     }
     {
-        auto j = parse("-1e1");
+        auto j = json::parse("-1e1");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_double());
-        CHECK(*j.value().get<double>() == -10);
+        REQUIRE(j.value().is_double());
+        CHECK(j.value().get<double>().value() == -10);
     }
     {
-        auto j = parse("-0.0e0");
+        auto j = json::parse("-0.0e0");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_double());
-        CHECK(*j.value().get<double>() == -0);
+        REQUIRE(j.value().is_double());
+        CHECK(j.value().get<double>().value() == -0);
     }
     {
-        auto j = parse("-0.0E0");
+        auto j = json::parse("-0.0E0");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_double());
-        CHECK(*j.value().get<double>() == -0);
+        REQUIRE(j.value().is_double());
+        CHECK(j.value().get<double>().value() == -0);
     }
     {
-        auto j = parse("-0.0E+000001");
+        auto j = json::parse("-0.0E+000001");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_double());
-        CHECK(*j.value().get<double>() == -0);
+        REQUIRE(j.value().is_double());
+        CHECK(j.value().get<double>().value() == -0);
     }
     {
-        CHECK(!parse("-0.0e"));
+        CHECK(!json::parse("-0.0e"));
     }
     {
-        CHECK(!parse("-"));
+        CHECK(!json::parse("-"));
     }
     {
-        CHECK(!parse("-0.0ee"));
+        CHECK(!json::parse("-0.0ee"));
     }
     {
-        auto j = parse("1.2");
+        auto j = json::parse("1.2");
         REQUIRE(j);
         CHECK(j.value().is_number());
-        CHECK(j.value().is_double());
-        CHECK(*j.value().get<double>() == 1.2);
+        REQUIRE(j.value().is_double());
+        CHECK(j.value().get<double>().value() == 1.2);
     }
     {
-        CHECK(!parse("1.2,"));
+        CHECK(!json::parse("1.2,"));
     }
 }
 
-TEST("parse whitespace") {
-    CHECK(!parse("               "));
-    CHECK(parse(" \n\r\t1 \n\r\t"));
+TEST("json::parse whitespace") {
+    CHECK(!json::parse("               "));
+    CHECK(json::parse(" \n\r\t1 \n\r\t"));
 }
 
-TEST("parse strings") {
+TEST("json::parse strings") {
     {
-        auto j = parse(R"("")"); 
+        auto j = json::parse(R"("")"); 
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "");
     }
     {
-        auto j = parse(R"("\n")"); 
+        auto j = json::parse(R"("\n")"); 
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == R"(\n)");
     }
     {
-        auto j = parse(R"("\\n")"); 
+        auto j = json::parse(R"("\\n")"); 
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == R"(\\n)");
     }
     {
-        auto j = parse(R"("HelloWorld")"); 
+        auto j = json::parse(R"("HelloWorld")"); 
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "HelloWorld");
     }
     {
-        auto j = parse(R"("HelloWorld\n")"); 
+        auto j = json::parse(R"("HelloWorld\n")"); 
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == R"(HelloWorld\n)");
     }
 }
 
-TEST("parse null false true") {
-    CHECK(parse(" null "));
-    CHECK(!parse("n"));
-    CHECK(!parse("nu"));
-    CHECK(!parse("nul"));
-    CHECK(!parse("xull"));
-    CHECK(!parse("nxll"));
-    CHECK(!parse("nuxl"));
-    CHECK(!parse("nulx"));
-    CHECK(!parse("nullx"));
+TEST("json::parse null false true") {
+    CHECK(json::parse(" null "));
+    CHECK(!json::parse("n"));
+    CHECK(!json::parse("nu"));
+    CHECK(!json::parse("nul"));
+    CHECK(!json::parse("xull"));
+    CHECK(!json::parse("nxll"));
+    CHECK(!json::parse("nuxl"));
+    CHECK(!json::parse("nulx"));
+    CHECK(!json::parse("nullx"));
     
-    CHECK(parse(" false "));
-    CHECK(!parse("f"));
-    CHECK(!parse("fa"));
-    CHECK(!parse("fal"));
-    CHECK(!parse("xalse"));
-    CHECK(!parse("fxlse"));
-    CHECK(!parse("faxse"));
-    CHECK(!parse("falxe"));
-    CHECK(!parse("falsx"));
-    CHECK(!parse("falsex"));
+    CHECK(json::parse(" false "));
+    CHECK(!json::parse("f"));
+    CHECK(!json::parse("fa"));
+    CHECK(!json::parse("fal"));
+    CHECK(!json::parse("xalse"));
+    CHECK(!json::parse("fxlse"));
+    CHECK(!json::parse("faxse"));
+    CHECK(!json::parse("falxe"));
+    CHECK(!json::parse("falsx"));
+    CHECK(!json::parse("falsex"));
     
-    CHECK(parse(" true "));
-    CHECK(!parse("t"));
-    CHECK(!parse("tr"));
-    CHECK(!parse("tru"));
-    CHECK(!parse("xrue"));
-    CHECK(!parse("txue"));
-    CHECK(!parse("trxe"));
-    CHECK(!parse("trux"));
-    CHECK(!parse("truex"));
+    CHECK(json::parse(" true "));
+    CHECK(!json::parse("t"));
+    CHECK(!json::parse("tr"));
+    CHECK(!json::parse("tru"));
+    CHECK(!json::parse("xrue"));
+    CHECK(!json::parse("txue"));
+    CHECK(!json::parse("trxe"));
+    CHECK(!json::parse("trux"));
+    CHECK(!json::parse("truex"));
 }
 
-TEST("parse array") {
-    auto j = parse("[]");
+TEST("json::parse array") {
+    auto j = json::parse("[]");
     REQUIRE(j);
     CHECK(j.value().is_array());
-    CHECK(!parse("["));
-    CHECK(!parse("]"));
-    CHECK(parse("[1, true, false]"));
-    CHECK(parse("[\"hi\", true, false]"));
-    CHECK(parse("[1, true, false, [1.2, false, []]]"));
-    CHECK(parse("[{\"hi\": true}, false]"));
+    CHECK(!json::parse("["));
+    CHECK(!json::parse("]"));
+    CHECK(json::parse("[1, true, false]"));
+    CHECK(json::parse("[\"hi\", true, false]"));
+    CHECK(json::parse("[1, true, false, [1.2, false, []]]"));
+    CHECK(json::parse("[{\"hi\": true}, false]"));
 }
 
-TEST("parse object") {
-    auto j = parse("{}");
+TEST("json::parse object") {
+    auto j = json::parse("{}");
     REQUIRE(j);
     CHECK(j.value().is_object());
-    CHECK(!parse("{"));
-    CHECK(!parse("}"));
-    CHECK(parse(R"({"key": true, "key2": false, "key3": null, "key4": 123})"));
-    CHECK(parse(R"({"key": true, "key2": {"key3": null, "key4": 123}})"));
-    CHECK(parse(R"({"key": true, "key2": [null, "key4", 123]})"));
-    CHECK(parse(R"([{"key": true}, {"key2": [null, "str4", 123]}])"));
+    CHECK(!json::parse("{"));
+    CHECK(!json::parse("}"));
+    CHECK(json::parse(R"({"key": true, "key2": false, "key3": null, "key4": 123})"));
+    CHECK(json::parse(R"({"key": true, "key2": {"key3": null, "key4": 123}})"));
+    CHECK(json::parse(R"({"key": true, "key2": [null, "key4", 123]})"));
+    CHECK(json::parse(R"([{"key": true}, {"key2": [null, "str4", 123]}])"));
 }
