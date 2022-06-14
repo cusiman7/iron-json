@@ -17,3 +17,11 @@ add_executable(test
     test/test_parse.cpp
 )
 target_link_libraries(test ironjson)
+
+add_executable(bench
+    bench/bench.cpp
+)
+target_link_libraries(bench ironjson)
+target_compile_options(bench PRIVATE -fno-omit-frame-pointer)
+
+configure_file(data/github_events.json ${CMAKE_CURRENT_BINARY_DIR}/data/github_events.json COPYONLY)
