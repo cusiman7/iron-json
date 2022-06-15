@@ -1121,10 +1121,13 @@ public:
                 stack.pop();
 
                 assert(stack.top().is_object());
-                stack.top()[std::move(key.get<std::string>()).value()] = std::move(a_or_o);
+                stack.top().value.object->emplace_back(
+                    std::move(key).get<std::string>().value(),
+                    std::move(a_or_o)
+                );
             } else {
                 assert(stack.top().is_array());
-                stack.top().push_back(std::move(a_or_o));
+                stack.top().value.array->emplace_back(std::move(a_or_o));
             }
         };
 
@@ -1179,7 +1182,7 @@ public:
                     stack.push(std::move(value).value());
                     continue;
                 } else {
-                    stack.top().push_back(std::move(value).value());
+                    stack.top().value.array->emplace_back(std::move(value).value());
                     continue;
                 }
             } else {
@@ -1234,12 +1237,12 @@ public:
 
                 // { "name": value, "name2": value2, ... }
                 //   ^ 
-                std::string key;
+                string_t key;
                 parsed_string ps = parse_string(c, cend);
                 switch (ps.t) {
                     case parsed_string::type::string:
                         c = ps.end + 1;
-                        key = std::string(ps.s.data, ps.s.size);
+                        key = string_t(ps.s.data, ps.s.size);
                         break;
                     case parsed_string::type::error:
                         return error(ps.error);
@@ -1268,7 +1271,7 @@ public:
                     continue;
                 } else {
                     // We parsed a Name and a non-object, non-array Value
-                    stack.top()[key] = std::move(value).value();
+                    stack.top().value.object->emplace_back(std::move(key), std::move(value).value());
                     continue;
                 }
             }
@@ -1280,9 +1283,7 @@ public:
         }
 
         assert(stack.size() == 1);
-        json j = stack.top();
-        stack.pop();
-        return j;
+        return std::move(stack.top());
     }
 
 //private:
