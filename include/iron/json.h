@@ -186,83 +186,66 @@ class json {
         uint64_t uint_num;
         double float_num;
         bool boolean;
-        
-        json_value() : object(nullptr) {}
-        json_value(const object_t& object) : object(new object_t(object)) {}
-        json_value(object_t&& object) : object(new object_t(std::move(object))) {}
-        json_value(const array_t& array) : array(new array_t(array)) {}
-        json_value(array_t&& array) : array(new array_t(std::move(array))) {}
-        json_value(const char* str) : string(new string_t(str)) {}
-        json_value(const string_t& str) : string(new string_t(str)) {}
-        json_value(string_t&& str) : string(new string_t(std::move(str))) {}
-        json_value(int num) : int_num(num) {}
-        json_value(int64_t num) : int_num(num) {}
-        json_value(uint64_t num) : uint_num(num) {}
-        json_value(double num) : float_num(num) {}
-        json_value(bool b) : boolean(b) {}
-        json_value(value_t type) {
-            switch (type) {
-                case value_t::object:
-                    object = new object_t();
-                    break;
-                case value_t::array:
-                    array = new array_t();
-                    break;
-                case value_t::string:
-                    string = new string_t();
-                    break;
-                case value_t::int_num:
-                    int_num = 0;
-                    break;
-                case value_t::uint_num:
-                    uint_num = 0;
-                    break;
-                case value_t::float_num:
-                    float_num = 0;
-                    break;
-                case value_t::boolean:
-                    boolean = false;
-                    break;
-                case value_t::null:
-                    object = nullptr;
-                    break;
-            }
-        }
-        json_value(const json_value&) = delete;
-        
-        void destroy(value_t type) {
-            switch (type) {
-                case value_t::object:
-                    delete object;
-                    break;
-                case value_t::array:
-                    delete array;
-                    break;
-                case value_t::string:
-                    delete string;
-                    break;
-                default:
-                    break;
-            }
-        }
     } value;
 
+    inline void destroy() {
+        switch (type) {
+            case value_t::object:
+                delete value.object;
+                break;
+            case value_t::array:
+                delete value.array;
+                break;
+            case value_t::string:
+                delete value.string;
+                break;
+            default:
+                break;
+        }
+    }
 public:
-    json() : type(value_t::null), value() {}
-    json(value_t t) : type(t), value(t) {}
-    json(nullptr_t null) : type(value_t::null), value() {}
-    json(const char* str) : type(value_t::string), value(str) {} 
-    json(const std::string& str) : type(value_t::string), value(str) {}
-    json(std::string&& str) : type(value_t::string), value(std::move(str)) {}
-    json(int num) : type(value_t::int_num), value(num) {}
-    json(int64_t num) : type(value_t::int_num), value(num) {}
-    json(uint64_t num) : type(value_t::uint_num), value(num) {}
-    json(double num) : type(value_t::float_num), value(num) {}
-    json(bool b) : type(value_t::boolean), value(b) {}
-    json(const object_t& o) : type(value_t::object), value(o) {}
-    json(object_t&& o) : type(value_t::object), value(std::move(o)) {}
-    json(const array_t& o) : type(value_t::array), value(o) {}
-    json(array_t&& o) : type(value_t::array), value(std::move(o)) {}
+    json() : type(value_t::null), value{.object = nullptr} {}
+    json(value_t t) : type(t) {
+        switch (type) {
+            case value_t::object:
+                value.object = new object_t();
+                return;
+            case value_t::array:
+                value.array = new array_t();
+                return;
+            case value_t::string:
+                value.string = new string_t();
+                return;
+            case value_t::int_num:
+                value.int_num = 0;
+                return;
+            case value_t::uint_num:
+                value.uint_num = 0;
+                return;
+            case value_t::float_num:
+                value.float_num = 0;
+                return;
+            case value_t::boolean:
+                value.boolean = false;
+                return;
+            case value_t::null:
+                value.object = nullptr;
+                return;
+        }
+    }
+    json(nullptr_t null) : type(value_t::null), value{.object = nullptr} {}
+    json(const char* str) : type(value_t::string), value{.string = new string_t(str)} {} 
+    json(const std::string& str) : type(value_t::string), value{.string = new string_t(str)} {}
+    json(std::string&& str) : type(value_t::string), value{.string = new string_t(std::move(str))} {}
+    json(int num) : type(value_t::int_num), value{.int_num = num} {}
+    json(int64_t num) : type(value_t::int_num), value{.int_num = num} {}
+    json(uint64_t num) : type(value_t::uint_num), value{.uint_num = num} {}
+    json(double num) : type(value_t::float_num), value{.float_num = num} {}
+    json(bool b) : type(value_t::boolean), value{.boolean = b} {}
+    json(const object_t& o) : type(value_t::object), value{.object = new object_t(o)} {}
+    json(object_t&& o) : type(value_t::object), value{.object = new object_t(std::move(o))} {}
+    json(const array_t& a) : type(value_t::array), value{.array = new array_t(a)} {}
+    json(array_t&& a) : type(value_t::array), value{.array = new array_t(std::move(a))} {}
 
     json(std::initializer_list<json> init) {
         bool looks_like_object = true;
@@ -274,14 +257,14 @@ public:
         }
         if (looks_like_object) {
             type = value_t::object;
-            value = object_t();
+            value.object = new object_t();
             value.object->reserve(init.size());
             for (auto& it : init) {
                 value.object->push_back({it[0].get<std::string>().value(), std::move(it[1])});
             }
         } else {
             type = value_t::array;
-            value = array_t(init.begin(), init.end());
+            value.array = new array_t(init.begin(), init.end());
         }
     }
     
@@ -322,133 +305,84 @@ public:
     json(const json& other) : type(other.type) {
         switch (type) {
             case value_t::object:
-                value = *other.value.object;
+                value.object = new object_t(*other.value.object);
                 break;
             case value_t::array:
-                value = *other.value.array;
+                value.array = new array_t(*other.value.array);
                 break;
             case value_t::string:
-                value = *other.value.string;
+                value.string = new string_t(*other.value.string);
                 break;
             case value_t::int_num:
-                value = other.value.int_num;
+                value.int_num = other.value.int_num;
                 break;
             case value_t::uint_num:
-                value = other.value.uint_num;
+                value.uint_num = other.value.uint_num;
                 break;
             case value_t::float_num:
-                value = other.value.float_num;
+                value.float_num = other.value.float_num;
                 break;
             case value_t::boolean:
-                value = other.value.boolean;
+                value.boolean = other.value.boolean;
                 break;
             case value_t::null:
-                value = {};
+                value.object = nullptr;
                 break;
         }
     }
 
     json& operator=(const json& other) {
         if (this != &other) {
-            value.destroy(type);
+            destroy();
             type = other.type;
-
             switch (type) {
                 case value_t::object:
-                    value = *other.value.object;
+                    value.object = new object_t(*other.value.object);
                     break;
                 case value_t::array:
-                    value = *other.value.array;
+                    value.array = new array_t(*other.value.array);
                     break;
                 case value_t::string:
-                    value = *other.value.string;
+                    value.string = new string_t(*other.value.string);
                     break;
                 case value_t::int_num:
-                    value = other.value.int_num;
+                    value.int_num = other.value.int_num;
                     break;
                 case value_t::uint_num:
-                    value = other.value.uint_num;
+                    value.uint_num = other.value.uint_num;
                     break;
                 case value_t::float_num:
-                    value = other.value.float_num;
+                    value.float_num = other.value.float_num;
                     break;
                 case value_t::boolean:
-                    value = other.value.boolean;
+                    value.boolean = other.value.boolean;
                     break;
                 case value_t::null:
-                    value = {};
+                    value.object = nullptr;
                     break;
             }
         }
         return *this;
     }
     
-    json(json&& other) : type(other.type) {
-        switch (type) {
-            case value_t::object:
-                value = std::move(*other.value.object);
-                break;
-            case value_t::array:
-                value = std::move(*other.value.array);
-                break;
-            case value_t::string:
-                value = std::move(*other.value.string);
-                break;
-            case value_t::int_num:
-                value = other.value.int_num;
-                break;
-            case value_t::uint_num:
-                value = other.value.uint_num;
-                break;
-            case value_t::float_num:
-                value = other.value.float_num;
-                break;
-            case value_t::boolean:
-                value = other.value.boolean;
-                break;
-            case value_t::null:
-                value = {};
-                break;
-        }
+    json(json&& other) : json() {
+        swap(*this, other);
     }
     
     json& operator=(json&& other) {
         if (this != &other) {
-            value.destroy(type);
-            type = other.type;
-
-            switch (type) {
-                case value_t::object:
-                    value = std::move(*other.value.object);
-                    break;
-                case value_t::array:
-                    value = std::move(*other.value.array);
-                    break;
-                case value_t::string:
-                    value = std::move(*other.value.string);
-                    break;
-                case value_t::int_num:
-                    value = other.value.int_num;
-                    break;
-                case value_t::uint_num:
-                    value = other.value.uint_num;
-                    break;
-                case value_t::float_num:
-                    value = other.value.float_num;
-                    break;
-                case value_t::boolean:
-                    value = other.value.boolean;
-                    break;
-                case value_t::null:
-                    value = {};
-                    break;
-            }
+            swap(*this, other);
         }
         return *this;
     }
 
     ~json() {
-        value.destroy(type);
+        destroy();
+    }
+
+    friend void swap(json& a, json& b) {
+        std::swap(a.type, b.type);
+        std::swap(a.value, b.value);
     }
     
     inline size_t empty() const {
@@ -777,7 +711,7 @@ public:
     void push_back(const json& j) {
         if (is_null()) {
             type = value_t::array;
-            value = json_value(value_t::array);
+            value.array = new array_t(1);
         }
         value.array->push_back(j);
     }
@@ -785,7 +719,7 @@ public:
     void push_back(json&& j) {
         if (is_null()) {
             type = value_t::array;
-            value = json_value(value_t::array);
+            value.array = new array_t(1);
         }
         value.array->push_back(std::move(j));
     }
@@ -793,7 +727,7 @@ public:
     json& operator[](int i) {
         if (is_null()) {
             type = value_t::array;
-            value = json_value(value_t::array);
+            value.array = new array_t(1);
         }
         return (*value.array)[i];        
     }
@@ -807,7 +741,7 @@ public:
     json& operator[](const char* k) {
         if (is_null()) {
             type = value_t::object;
-            value = json_value(value_t::object);
+            value.object = new object_t(1);
         }
 
         for (auto& [name, value] : *value.object) {
@@ -823,7 +757,7 @@ public:
     json& operator[](const std::string& k) {
         if (is_null()) {
             type = value_t::object;
-            value = json_value(value_t::object);
+            value.object = new object_t(1);
         }
 
         for (auto& [name, value] : *value.object) {
@@ -1178,12 +1112,12 @@ public:
 
         auto end_array_or_object = [&stack]() {
             assert(stack.top().is_array() || stack.top().is_object());
-            json a_or_o = stack.top();
+            json a_or_o = std::move(stack.top());
             stack.pop();
 
             assert(stack.top().is_string() || stack.top().is_array());
             if (stack.top().is_string()) {
-                json key = stack.top();
+                json key = std::move(stack.top());
                 stack.pop();
 
                 assert(stack.top().is_object());
