@@ -4,3 +4,4 @@ json
 build/
 debug/
 release/
+large_data/

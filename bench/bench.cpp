@@ -48,9 +48,16 @@ struct timer {
     double accumulated_seconds = 0.0;
 };
 
-static void bench_parse() {
+static void print_stats(const char* name, double avg_s, double mb_s, int32_t iterations) {
+    std::cout << std::left << std::setw(40) << name 
+              << std::setw(20) << avg_s  
+              << std::setw(20) << mb_s  
+              << std::setw(20) << iterations << "\n"; 
+}
+
+static void bench_parse_github_events() {
     std::string file = read_file("data/github_events.json");
-    constexpr int32_t iterations = 500;
+    constexpr int32_t iterations = 5000;
     timer t;
     for (int32_t i = 0; i < iterations; i++) {
         t.start();
@@ -58,14 +65,29 @@ static void bench_parse() {
         t.stop();
     }
     double avg = t.accumulated_seconds / iterations; 
-
-    std::cout << std::left << std::setw(20) << "benchmark" << std::setw(20) << "time (s)" << std::setw(20) << "iterations";
-    std::cout << "\n__________________________________________________\n";
-    std::cout << std::left << std::setw(20) << "bench_parse " << std::setw(20) << avg  << std::setw(20) << iterations << "\n"; 
+    print_stats(__FUNCTION__, avg, (file.size() / avg) / (1024*1024), iterations);
 }
 
+static void bench_parse_san_fran() {
+    std::string file = read_file("large_data/san_fran_parcels.json");
+    constexpr int32_t iterations = 10;
+    timer t;
+    for (int32_t i = 0; i < iterations; i++) {
+        t.start();
+        json::parse(file);
+        t.stop();
+    }
+    double avg = t.accumulated_seconds / iterations; 
+    print_stats(__FUNCTION__, avg, (file.size() / avg) / (1024*1024), iterations);
 }
+} // namespace bench
 
 int main() {
-    bench::bench_parse();
+    std::cout << std::left << std::setw(40) << "benchmark" 
+              << std::setw(20) << "time (s)" 
+              << std::setw(20) << "MB/s" 
+              << std::setw(20) << "iterations";
+    std::cout << "\n______________________________________________________________________\n";
+    bench::bench_parse_github_events();
+    bench::bench_parse_san_fran();
 }
