@@ -8,6 +8,7 @@
 #include <initializer_list>
 #include <iostream>
 #include <stack>
+#include <deque>
 #include <string_view>
 #include <cassert>
 #include <cfloat>
@@ -988,10 +989,6 @@ public:
     }
 
     static result<json, const char*> parse(const std::string& s) {
-        // The stack holds partial arrays and partial objects.
-        // Arrays are stored on the stack as-is.
-        // Partial objects are stored by first storing the object itself, then they parsed key
-        std::stack<json> stack;
         const char* c = s.data();
         const char* cend = c + s.size();
 
@@ -1092,6 +1089,15 @@ public:
             return error<const char*>("Unexpected token");
         };
 
+        // Structures holds in-progress structures (objects or array)
+        // and a count of the number of elements parsed so far.
+        std::stack<std::pair<json*, size_t>> structures;
+        // Holds Name-Value pairs for objects being constructed
+        std::deque<std::pair<std::string, json>> object_parts;
+        // Holds values for arrays being constructed
+        std::deque<json> array_parts;
+
+        json root;
         // JSON docs can be single values all by themselves
         {
             result<json, const char*> value = parse_value();
@@ -1107,48 +1113,53 @@ public:
             }
 
             // Array or Object
-            stack.push(std::move(value).value());
+            root = std::move(value).value();
+            structures.emplace(&root, 0);
         }
 
-        auto end_array_or_object = [&stack]() {
-            assert(stack.top().is_array() || stack.top().is_object());
-            json a_or_o = std::move(stack.top());
-            stack.pop();
+        auto end_array_or_object = [&structures, &object_parts, &array_parts]() {
+            assert(!structures.empty());
+            assert(structures.top().first->is_array() || structures.top().first->is_object());
+            if (structures.top().second == 0) {
+                structures.pop();
+                return;
+            }
+            auto [a_or_o, size] = structures.top();
+            structures.pop();
 
-            assert(stack.top().is_string() || stack.top().is_array());
-            if (stack.top().is_string()) {
-                json key = std::move(stack.top());
-                stack.pop();
-
-                assert(stack.top().is_object());
-                stack.top().value.object->emplace_back(
-                    std::move(key).get<std::string>().value(),
-                    std::move(a_or_o)
-                );
+            if (a_or_o->is_object()) {
+                auto& obj_vec = *a_or_o->value.object;
+                assert(obj_vec.empty());
+                obj_vec.insert(obj_vec.end(),
+                               std::make_move_iterator(object_parts.end() - size),
+                               std::make_move_iterator(object_parts.end()));
+                object_parts.erase(object_parts.end() - size, object_parts.end());
             } else {
-                assert(stack.top().is_array());
-                stack.top().value.array->emplace_back(std::move(a_or_o));
+                assert(a_or_o->is_array());
+                auto& arr_vec = *a_or_o->value.array;
+                assert(arr_vec.empty());
+                arr_vec.insert(arr_vec.end(),
+                               std::make_move_iterator(array_parts.end() - size),
+                               std::make_move_iterator(array_parts.end()));
+                array_parts.erase(array_parts.end() - size, array_parts.end());
             }
         };
 
-        while (true) {
+        while (!structures.empty()) {
             // Parse Array
             // Arrays are lists of Values.
             // Commas "," separate Values.
             // [ value, value2, ... ]
             //  ^
 
-            assert(stack.top().is_array() || stack.top().is_object());
-            if (stack.top().is_array()) {
-                if (!stack.top().empty()) {
+            assert(structures.top().first->is_array() || structures.top().first->is_object());
+            if (structures.top().first->is_array()) {
+                if (structures.top().second > 0) {
                     c = skip_whitespace(c, cend);
                     // [ value, value2, ... ]
                     //                      ^
                     if (c != cend && *c == ']') {
                         c++;
-                        if (stack.size() == 1) {
-                            break;
-                        }
                         end_array_or_object();
                         continue;
                     }
@@ -1169,20 +1180,20 @@ public:
                     //                      ^
                     if (c != cend && *c == ']') {
                         c++;
-                        if (stack.size() == 1) {
-                            break;
-                        }
                         end_array_or_object();
                         continue;
                     }
                     return value;
                 } else if (value.value().is_object() || value.value().is_array()) {
-                    // Stack will be: |value | <- top
-                    //                |array |
-                    stack.push(std::move(value).value());
+                    // Structues will be: |new_struct*, 0   | <- top
+                    //                    |array*,      n+1 |
+                    structures.top().second += 1;
+                    array_parts.emplace_back(std::move(value).value());
+                    structures.emplace(&array_parts.back(), 0);
                     continue;
                 } else {
-                    stack.top().value.array->emplace_back(std::move(value).value());
+                    structures.top().second += 1;
+                    array_parts.emplace_back(std::move(value).value());
                     continue;
                 }
             } else {
@@ -1194,17 +1205,14 @@ public:
                 // { "name": value, "name2": value2, ... }
                 //  ^
 
-                assert(stack.top().is_object());
+                assert(structures.top().first->is_object());
 
-                if (!stack.top().empty()) {
+                if (structures.top().second > 0) {
                     // { "name": value, "name2": value2, ... }
                     //                                       ^
                     c = skip_whitespace(c, cend);
                     if (c != cend && *c == '}') {
                         c++;
-                        if (stack.size() == 1) {
-                            break;
-                        }
                         end_array_or_object();
                         continue;
                     }
@@ -1226,9 +1234,6 @@ public:
                     // { "name": value, "name2": value2, ... }
                     //                                       ^
                     c++;
-                    if (stack.size() == 1) {
-                        break;
-                    }
                     end_array_or_object();
                     continue;
                 } else if (*c != '"') {
@@ -1263,15 +1268,16 @@ public:
                 if (!value) {
                     return value;
                 } else if (value.value().is_object() || value.value().is_array()) {
-                    // Stack will be: |value | <- top
-                    //                |key   |
-                    //                |object|
-                    stack.push(std::move(key));
-                    stack.push(std::move(value).value());
+                    // Structues will be: |new_struct*, 0   | <- top
+                    //                    |object*,     n+1 |
+                    structures.top().second += 1;
+                    object_parts.emplace_back(std::move(key), std::move(value).value());
+                    structures.emplace(&object_parts.back().second, 0);
                     continue;
                 } else {
                     // We parsed a Name and a non-object, non-array Value
-                    stack.top().value.object->emplace_back(std::move(key), std::move(value).value());
+                    structures.top().second += 1;
+                    object_parts.emplace_back(std::move(key), std::move(value).value());
                     continue;
                 }
             }
@@ -1282,8 +1288,7 @@ public:
             return error<const char*>("Unexpected character");
         }
 
-        assert(stack.size() == 1);
-        return std::move(stack.top());
+        return root;
     }
 
 //private:
