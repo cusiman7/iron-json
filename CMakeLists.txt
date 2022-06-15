@@ -25,3 +25,5 @@ target_link_libraries(bench ironjson)
 target_compile_options(bench PRIVATE -fno-omit-frame-pointer)
 
 configure_file(data/github_events.json ${CMAKE_CURRENT_BINARY_DIR}/data/github_events.json COPYONLY)
+configure_file(large_data/san_fran_parcels.json ${CMAKE_CURRENT_BINARY_DIR}/large_data/san_fran_parcels.json COPYONLY)
+configure_file(large_data/canada.json ${CMAKE_CURRENT_BINARY_DIR}/large_data/canada.json COPYONLY)
