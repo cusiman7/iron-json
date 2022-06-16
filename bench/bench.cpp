@@ -111,6 +111,21 @@ static void bench_parse_canada() {
     allocations /= iterations;
     print_stats(__FUNCTION__, avg, (file.size() / avg) / (1024*1024), iterations);
 }
+
+static void bench_parse_twitter() {
+    std::string file = read_file("large_data/twitter.json");
+    constexpr int32_t iterations = 1000;
+    timer t;
+    allocations = 0;
+    for (int32_t i = 0; i < iterations; i++) {
+        t.start();
+        json::parse(file);
+        t.stop();
+    }
+    double avg = t.accumulated_seconds / iterations; 
+    allocations /= iterations;
+    print_stats(__FUNCTION__, avg, (file.size() / avg) / (1024*1024), iterations);
+}
 } // namespace bench
 
 int main() {
@@ -123,4 +138,5 @@ int main() {
     bench::bench_parse_github_events();
     bench::bench_parse_san_fran();
     bench::bench_parse_canada();
+    bench::bench_parse_twitter();
 }
