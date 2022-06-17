@@ -26,11 +26,11 @@ bool under_max(U n) {
     return n <= std::numeric_limits<T>::max();
 }
 
-static const char* control_chars_hex[32] = {"\\u0000", "\\u0001", "\\u0002", "\\u0003", 
+static const char* control_chars_hex[32] = {"\\u0000", "\\u0001", "\\u0002", "\\u0003",
     "\\u0004", "\\u0005", "\\u0006", "\\u0007", "\\b", "\\t", "\\n",
     "\\u000B", "\\f", "\\r", "\\u000E", "\\u000F", "\\u0010", "\\u0011",
     "\\u0012", "\\u0013", "\\u0014", "\\u0015", "\\u0016", "\\u0017", "\\u0018",
-    "\\u0019", "\\u001A", "\\u001B", "\\u001C", "\\u001D", "\\u001E", "\\u001F"}; 
+    "\\u0019", "\\u001A", "\\u001B", "\\u001C", "\\u001D", "\\u001E", "\\u001F"};
 } // namespace
 
 template <typename E>
@@ -87,7 +87,7 @@ public:
         } else {
             if (rhs.ok_) {
                 e_.~E();
-                new(&v_) T(rhs.v_); 
+                new(&v_) T(rhs.v_);
                 ok_ = true;
             } else {
                 e_ = rhs.e_;
@@ -106,7 +106,7 @@ public:
         } else {
             if (rhs.ok_) {
                 e_.~E();
-                new(&v_) T(std::move(rhs.v_)); 
+                new(&v_) T(std::move(rhs.v_));
                 ok_ = true;
             } else {
                 e_ = std::move(rhs.e_);
@@ -152,7 +152,7 @@ public:
         if (!ok_) return e_;
         std::abort();
     }
-    
+
     const E& error() const& {
         if (!ok_) return e_;
         std::abort();
@@ -162,7 +162,7 @@ public:
         if (!ok_) return std::move(e_);
         std::abort();
     }
-    
+
     const E&& error() const&& {
         if (!ok_) return std::move(e_);
         std::abort();
@@ -193,7 +193,7 @@ class json {
     value_t type;
     union json_value {
         object_t* object;
-        array_t* array; 
+        array_t* array;
         string_t* string;
         int64_t int_num;
         uint64_t uint_num;
@@ -247,7 +247,7 @@ public:
         }
     }
     json(nullptr_t null) : type(value_t::null), value{.object = nullptr} {}
-    json(const char* str) : type(value_t::string), value{.string = new string_t(str)} {} 
+    json(const char* str) : type(value_t::string), value{.string = new string_t(str)} {}
     json(const std::string& str) : type(value_t::string), value{.string = new string_t(str)} {}
     json(std::string&& str) : type(value_t::string), value{.string = new string_t(std::move(str))} {}
     json(int num) : type(value_t::int_num), value{.int_num = num} {}
@@ -280,7 +280,7 @@ public:
             value.array = new array_t(init.begin(), init.end());
         }
     }
-    
+
     static json object() {
         return json(value_t::object);
     }
@@ -288,16 +288,16 @@ public:
     static json object(const object_t& o) {
         return json(o);
     }
-    
+
     static json object(object_t&& o) {
         return json(std::move(o));
     }
-    
+
     template <typename ...Args>
     static json object(Args&& ...args) {
         return json(object_t{std::forward<Args>(args)...});
     }
-    
+
     static json array() {
         return json(value_t::array);
     }
@@ -305,11 +305,11 @@ public:
     static json array(const array_t& a) {
         return json(a);
     }
-    
+
     static json array(array_t&& a) {
         return json(std::move(a));
     }
-    
+
     template <typename ...Args>
     static json array(Args&& ...args) {
         return json(array_t{std::forward<Args>(args)...});
@@ -377,11 +377,11 @@ public:
         }
         return *this;
     }
-    
+
     json(json&& other) : json() {
         swap(*this, other);
     }
-    
+
     json& operator=(json&& other) {
         if (this != &other) {
             swap(*this, other);
@@ -397,7 +397,7 @@ public:
         std::swap(a.type, b.type);
         std::swap(a.value, b.value);
     }
-    
+
     inline size_t empty() const {
         if (is_object()) return value.object->empty();
         if (is_array()) return value.array->empty();
@@ -435,7 +435,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<string_t, json_error> get<std::string>() && {
         if (is_string()) {
@@ -443,7 +443,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<bool, json_error> get<bool>() const& {
         if (is_boolean()) {
@@ -451,7 +451,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<bool, json_error> get<bool>() && {
         if (is_boolean()) {
@@ -469,7 +469,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<int8_t, json_error> get<int8_t>() && {
         if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
@@ -519,7 +519,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<int64_t, json_error> get<int64_t>() const& {
         if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
@@ -529,7 +529,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<int64_t, json_error> get<int64_t>() && {
         if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
@@ -539,7 +539,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<uint8_t, json_error> get<uint8_t>() const& {
         if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
@@ -547,7 +547,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<uint8_t, json_error> get<uint8_t>() && {
         if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
@@ -555,7 +555,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<uint16_t, json_error> get<uint16_t>() const& {
         if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
@@ -563,7 +563,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<uint16_t, json_error> get<uint16_t>() && {
         if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
@@ -571,7 +571,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<uint32_t, json_error> get<uint32_t>() const& {
         if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
@@ -579,7 +579,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<uint32_t, json_error> get<uint32_t>() && {
         if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
@@ -587,7 +587,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<uint64_t, json_error> get<uint64_t>() const& {
         if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
@@ -595,7 +595,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<uint64_t, json_error> get<uint64_t>() && {
         if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
@@ -603,7 +603,7 @@ public:
         }
         return error(json_error::invalid_type);
     }
-    
+
     template <>
     result<float, json_error> get<float>() const& {
         switch (type) {
@@ -611,13 +611,13 @@ public:
                 return value.float_num;
             case value_t::int_num:
                 return value.int_num;
-            case value_t::uint_num: 
+            case value_t::uint_num:
                 return value.uint_num;
             default:
                 return error(json_error::invalid_type);
         }
     }
-    
+
     template <>
     result<float, json_error> get<float>() && {
         switch (type) {
@@ -625,13 +625,13 @@ public:
                 return value.float_num;
             case value_t::int_num:
                 return value.int_num;
-            case value_t::uint_num: 
+            case value_t::uint_num:
                 return value.uint_num;
             default:
                 return error(json_error::invalid_type);
         }
     }
-    
+
     template <>
     result<double, json_error> get<double>() const& {
         switch (type) {
@@ -639,13 +639,13 @@ public:
                 return value.float_num;
             case value_t::int_num:
                 return value.int_num;
-            case value_t::uint_num: 
+            case value_t::uint_num:
                 return value.uint_num;
             default:
                 return error(json_error::invalid_type);
         }
     }
-    
+
     template <>
     result<double, json_error> get<double>() && {
         switch (type) {
@@ -653,7 +653,7 @@ public:
                 return value.float_num;
             case value_t::int_num:
                 return value.int_num;
-            case value_t::uint_num: 
+            case value_t::uint_num:
                 return value.uint_num;
             default:
                 return error(json_error::invalid_type);
@@ -693,7 +693,7 @@ public:
         switch (j.type) {
             case value_t::object: {
                 if (j.value.object->empty()) {
-                    os << "{}"; 
+                    os << "{}";
                     break;
                 }
                 os << "{\n";
@@ -765,7 +765,7 @@ public:
     }
 
     // Array Operations
-    
+
     void push_back(const json& j) {
         if (is_null()) {
             type = value_t::array;
@@ -787,11 +787,11 @@ public:
             type = value_t::array;
             value.array = new array_t(1);
         }
-        return (*value.array)[i];        
+        return (*value.array)[i];
     }
 
     const json& operator[](int i) const {
-        return (*value.array)[i];        
+        return (*value.array)[i];
     }
 
     // Object Operations
@@ -827,7 +827,7 @@ public:
         value.object->push_back({k, json()});
         return value.object->back().second;
     }
-    
+
     const json& operator[](const std::string& k) const {
         for (auto& [name, value] : *value.object) {
             if (name == k) {
@@ -854,12 +854,12 @@ public:
         basic_iterator() : type(value_t::null), null(nullptr) {}
         basic_iterator(reference_type o, ObjectItT it) : type(o.type), object_it(it) {}
         basic_iterator(reference_type o, ArrayItT it) : type(o.type), array_it(it) {}
-    
+
         reference_type operator*() {
             switch (type) {
-                case value_t::object: 
+                case value_t::object:
                     return object_it->second;
-                case value_t::array: 
+                case value_t::array:
                     return *array_it;
                 case value_t::string:
                 case value_t::int_num:
@@ -870,12 +870,12 @@ public:
                     std::abort();
             }
         }
-        
+
         reference_type operator->() {
             switch (type) {
-                case value_t::object: 
+                case value_t::object:
                     return object_it->second;
-                case value_t::array: 
+                case value_t::array:
                     return *array_it;
                 case value_t::string:
                 case value_t::int_num:
@@ -886,7 +886,7 @@ public:
                     std::abort();
             }
         }
-        
+
         const string_t& name() {
             if (type == value_t::object) {
                 return object_it->first;
@@ -907,14 +907,14 @@ public:
             }
             std::abort();
         }
-        
+
         reference_type value() {
             if (type == value_t::object) {
                 return object_it->second;
             }
             std::abort();
         }
-        
+
         reference_type second() {
             if (type == value_t::object) {
                 return object_it->second;
@@ -924,10 +924,10 @@ public:
 
         basic_iterator& operator++() {
             switch (type) {
-                case value_t::object: 
+                case value_t::object:
                     ++object_it;
                     break;
-                case value_t::array: 
+                case value_t::array:
                     ++array_it;
                     break;
                 case value_t::string:
@@ -943,10 +943,10 @@ public:
 
         basic_iterator& operator++(int) {
             switch (type) {
-                case value_t::object: 
-                    object_it++; 
+                case value_t::object:
+                    object_it++;
                     break;
-                case value_t::array: 
+                case value_t::array:
                     array_it++;
                     break;
                 case value_t::string:
@@ -963,9 +963,9 @@ public:
         bool operator==(const basic_iterator& other) const {
             if (type == other.type) {
                 switch (type) {
-                    case value_t::object: 
+                    case value_t::object:
                         return object_it == other.object_it;
-                    case value_t::array: 
+                    case value_t::array:
                         return array_it == other.array_it;
                     case value_t::string:
                     case value_t::int_num:
@@ -976,7 +976,7 @@ public:
                         return true;
                 }
             }
-            return false; 
+            return false;
         }
 
         bool operator!=(const basic_iterator& other) const {
@@ -987,7 +987,7 @@ public:
     using iterator = basic_iterator<json, object_t::iterator, array_t::iterator>;
     using const_iterator = basic_iterator<const json, object_t::const_iterator, array_t::const_iterator>;
 
-    iterator begin() { 
+    iterator begin() {
         switch (type) {
             case value_t::object: return iterator(*this, value.object->begin());
             case value_t::array: return iterator(*this, value.array->begin());
@@ -995,7 +995,7 @@ public:
         }
     }
 
-    iterator end() { 
+    iterator end() {
         switch (type) {
             case value_t::object: return iterator(*this, value.object->end());
             case value_t::array: return iterator(*this, value.array->end());
@@ -1003,15 +1003,15 @@ public:
         }
     }
 
-    const_iterator begin() const { 
+    const_iterator begin() const {
         return cbegin();
     }
 
-    const_iterator end() const { 
+    const_iterator end() const {
         return cend();
     }
 
-    const_iterator cbegin() const { 
+    const_iterator cbegin() const {
         switch (type) {
             case value_t::object: return const_iterator(*this, value.object->cbegin());
             case value_t::array: return const_iterator(*this, value.array->cbegin());
@@ -1019,7 +1019,7 @@ public:
         }
     }
 
-    const_iterator cend() const { 
+    const_iterator cend() const {
         switch (type) {
             case value_t::object: return const_iterator(*this, value.object->cend());
             case value_t::array: return const_iterator(*this, value.array->cend());
@@ -1073,37 +1073,37 @@ public:
                 case 't': // begin true
                     if (cend - c < 4) {
                         c += cend - c;
-                        return error<const char*>("Unexpected value"); 
+                        return error<const char*>("Unexpected value");
                     } else if (c[1] == 'r' && c[2] == 'u' && c[3] == 'e') {
                         c = skip_whitespace(c + 4, cend);
                         return json(true);
                     } else {
                         c += 4;
-                        return error<const char*>("Unexpected value"); 
+                        return error<const char*>("Unexpected value");
                     }
                     break;
                 case 'f': // Begin false
                     if (cend - c < 5) {
                         c += cend - c;
-                        return error<const char*>("Unexpected value"); 
+                        return error<const char*>("Unexpected value");
                     } else if (c[1] == 'a' && c[2] == 'l' && c[3] == 's' && c[4] == 'e') {
                         c = skip_whitespace(c + 5, cend);
                         return json(false);
                     } else {
                         c += 5;
-                        return error<const char*>("Unexpected value"); 
+                        return error<const char*>("Unexpected value");
                     }
                     break;
                 case 'n': // begin null
                     if (cend - c < 4) {
                         c += cend - c;
-                        return error<const char*>("Unexpected value"); 
+                        return error<const char*>("Unexpected value");
                     } else if (c[1] == 'u' && c[2] == 'l' && c[3] == 'l') {
                         c = skip_whitespace(c + 4, cend);
                         return json();
                     } else {
                         c += 4;
-                        return error<const char*>("Unexpected value"); 
+                        return error<const char*>("Unexpected value");
                     }
                     break;
                 case '-':
@@ -1291,10 +1291,10 @@ public:
                     continue;
                 } else if (*c != '"') {
                     return error<const char*>("Expected start of String for Key");
-                } 
+                }
 
                 // { "name": value, "name2": value2, ... }
-                //   ^ 
+                //   ^
                 string_t key;
                 auto ps = parse_string(&c, cend);
                 if (!ps) {
@@ -1347,9 +1347,9 @@ public:
     using parsed_string = result<string_t, const char*>;
 
     /*
-     * We parse strings in a single pass in the common case and two passes worst-case. 
+     * We parse strings in a single pass in the common case and two passes worst-case.
      * The first pass validates the string is UTF-8 and identifies the end of the string.
-     * If the string has no escape characters '\' the string is memcopied and returned. 
+     * If the string has no escape characters '\' the string is memcopied and returned.
      * If any escape characters were identified during validation and length checking
      * a second pass is performed to decode the string.
      */
@@ -1358,8 +1358,8 @@ public:
         // Reserve enough space for the output.
         // At worst this is 6x larger than it needs to be because the entire string could be
         // 6 char length hex codes which map to 1 byte utf-8 codepoints (\u0041 == 'A')
-        ret.reserve(str_end - str_start); 
-       
+        ret.reserve(str_end - str_start);
+
         const char* start = str_start;
         const char* curr = str_start;
         while (curr != str_end) {
@@ -1369,7 +1369,7 @@ public:
                 curr++;
                 switch (*curr) {
                     case '"':
-                    case '\\': 
+                    case '\\':
                     case '/':
                         ret.append(1, *curr);
                         break;
@@ -1409,7 +1409,7 @@ public:
 
         while (true) {
             while (*c != cend && **c != '"') {
-                take_slow_path |= (**c == '\\'); 
+                take_slow_path |= (**c == '\\');
                 // TODO: UTF-8 validation here
                 (*c)++;
             }
@@ -1420,8 +1420,8 @@ public:
             if (!take_slow_path) {
                 assert(**c == '"');
                 return string_t(str_start, static_cast<size_t>(*c - str_start));
-            } 
-            
+            }
+
             // We may not be at the end of the string yet as it may simply have been escaped
             int escaped = 0;
             const char* peek_back = (*c - 1);
@@ -1442,7 +1442,7 @@ public:
     enum class number_t {
         int_num,
         uint_num,
-        real_num,    
+        real_num,
         error,
     };
 
@@ -1499,7 +1499,7 @@ public:
     static parsed_number parse_number(const char* str, const char* end) {
         enum class parse_phase {
             begin, // Allows '-' or any digit
-            unsigned_digits, // 1-9 or '.' 
+            unsigned_digits, // 1-9 or '.'
             signed_digits_1, // Follows leading '-'. Any digit but 0 promotes to real
             signed_digits_2, // any digit, '.', 'e', or 'E' promotes to real
             real_decimal, // Can only be '0.'
@@ -1509,7 +1509,7 @@ public:
             real_exponent_2, // any digit, 0s ignored
             real_exponent_3, // any digit, 0s not ignored
         };
-     
+
         const char* c = str;
         const char* c_begin = str;
         const char* cend = end;
@@ -1525,7 +1525,7 @@ public:
         for (;c != cend;++c) {
             switch(phase) {
                 case parse_phase::begin:
-                    // std::cout << "begin\n"; 
+                    // std::cout << "begin\n";
                     switch(*c) {
                         case '-':
                             sign = -1;
@@ -1533,7 +1533,7 @@ public:
                             break;
                         case '0':
                             phase = parse_phase::real_decimal;
-                            break; 
+                            break;
                         case '1':
                         case '2':
                         case '3':
@@ -1551,7 +1551,7 @@ public:
                     }
                     break;
                 case parse_phase::unsigned_digits:
-                    // std::cout << "unsigned_digits\n"; 
+                    // std::cout << "unsigned_digits\n";
                     switch(*c) {
                         case '0':
                         case '1':
@@ -1581,11 +1581,11 @@ public:
                     }
                     break;
                 case parse_phase::signed_digits_1:
-                    // std::cout << "signed_digits_1\n"; 
+                    // std::cout << "signed_digits_1\n";
                     switch(*c) {
                         case '0':
                             phase = parse_phase::real_decimal;
-                            break; 
+                            break;
                         case '1':
                         case '2':
                         case '3':
@@ -1603,7 +1603,7 @@ public:
                     }
                     break;
                 case parse_phase::signed_digits_2:
-                    // std::cout << "signed_digits_2\n"; 
+                    // std::cout << "signed_digits_2\n";
                     switch(*c) {
                         case '0':
                         case '1':
@@ -1633,7 +1633,7 @@ public:
                     }
                     break;
                 case parse_phase::real_decimal:
-                    // std::cout << "real_decimal\n"; 
+                    // std::cout << "real_decimal\n";
                     switch(*c) {
                         case '.':
                             phase = parse_phase::real_significand_1;
@@ -1657,14 +1657,14 @@ public:
                         case '9':
                             implicit_exponent -= 1;
                             u = u * 10 + (*c - '0');
-                            phase = parse_phase::real_significand_2; 
+                            phase = parse_phase::real_significand_2;
                             break;
                         case 'e':
                         case 'E':
-                            phase = parse_phase::real_exponent_1; 
+                            phase = parse_phase::real_exponent_1;
                             break;
                         default:
-                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign);
                             double d;
                             if (compute_double(exponent, u, &d)) {
                                 return parsed_number(c, d * sign);
@@ -1696,7 +1696,7 @@ public:
                             break;
                         default:
                             //return parsed_number(c, "Expected 'e', 'E' or digit after '.'");
-                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign);
                             double d;
                             if (compute_double(exponent, u, &d)) {
                                 return parsed_number(c, d * sign);
@@ -1756,7 +1756,7 @@ public:
                             break;
                         default: {
                             // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
-                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign);
                             double d;
                             if (compute_double(exponent, u, &d)) {
                                 return parsed_number(c, d * sign);
@@ -1769,7 +1769,7 @@ public:
                     }
                     break;
                 case parse_phase::real_exponent_3:
-                    // std::cout << "real_exponent_3\n"; 
+                    // std::cout << "real_exponent_3\n";
                     switch (*c) {
                         case '0':
                         case '1':
@@ -1785,7 +1785,7 @@ public:
                             break;
                         default: {
                             // TODO: https://r-libre.teluq.ca/2259/1/floatparsing-11.pdf
-                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign); 
+                            int64_t exponent = implicit_exponent + (explicit_exponent * exponent_sign);
                             double d;
                             if (compute_double(exponent, u, &d)) {
                                 return parsed_number(c, d * sign);
@@ -1799,7 +1799,7 @@ public:
                     break;
             }
         }
-        
+
         // We can only be here because we ran out of chars
         switch (phase) {
             case parse_phase::begin:

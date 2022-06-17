@@ -144,7 +144,7 @@ TEST("json::parse whitespace") {
 
 TEST("json::parse strings") {
     {
-        auto j = json::parse(R"("")"); 
+        auto j = json::parse(R"("")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "");
         std::stringstream ss;
@@ -152,7 +152,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("")");
     }
     {
-        auto j = json::parse(R"("\n")"); 
+        auto j = json::parse(R"("\n")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "\n");
         std::stringstream ss;
@@ -160,7 +160,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("\n")");
     }
     {
-        auto j = json::parse(R"("\\n")"); 
+        auto j = json::parse(R"("\\n")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "\\n");
         std::stringstream ss;
@@ -168,7 +168,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("\\n")");
     }
     {
-        auto j = json::parse(R"("HelloWorld")"); 
+        auto j = json::parse(R"("HelloWorld")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "HelloWorld");
         std::stringstream ss;
@@ -176,7 +176,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("HelloWorld")");
     }
     {
-        auto j = json::parse(R"("HelloWorld\n")"); 
+        auto j = json::parse(R"("HelloWorld\n")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "HelloWorld\n");
         std::stringstream ss;
@@ -184,7 +184,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("HelloWorld\n")");
     }
     {
-        auto j = json::parse(R"("Hello\"World\n")"); 
+        auto j = json::parse(R"("Hello\"World\n")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "Hello\"World\n");
         std::stringstream ss;
@@ -192,7 +192,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("Hello\"World\n")");
     }
     {
-        auto j = json::parse(R"("\\\\\\\\")"); 
+        auto j = json::parse(R"("\\\\\\\\")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "\\\\\\\\");
         std::stringstream ss;
@@ -200,7 +200,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("\\\\\\\\")");
     }
     {
-        auto j = json::parse(R"("\"\"\"\"")"); 
+        auto j = json::parse(R"("\"\"\"\"")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "\"\"\"\"");
         std::stringstream ss;
@@ -208,7 +208,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("\"\"\"\"")");
     }
     {
-        auto j = json::parse(R"("\"Name rue")"); 
+        auto j = json::parse(R"("\"Name rue")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "\"Name rue");
         std::stringstream ss;
@@ -216,7 +216,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("\"Name rue")");
     }
     {
-        auto j = json::parse(R"("- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.")"); 
+        auto j = json::parse(R"("- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.");
         std::stringstream ss;
@@ -224,7 +224,7 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.")");
     }
     {
-        auto j = json::parse(R"("\"\\\/\b\f\n\r\t")"); 
+        auto j = json::parse(R"("\"\\\/\b\f\n\r\t")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "\"\\/\b\f\n\r\t");
         std::stringstream ss;
@@ -243,7 +243,7 @@ TEST("json::parse null false true") {
     CHECK(!json::parse("nuxl"));
     CHECK(!json::parse("nulx"));
     CHECK(!json::parse("nullx"));
-    
+
     CHECK(json::parse(" false "));
     CHECK(!json::parse("f"));
     CHECK(!json::parse("fa"));
@@ -254,7 +254,7 @@ TEST("json::parse null false true") {
     CHECK(!json::parse("falxe"));
     CHECK(!json::parse("falsx"));
     CHECK(!json::parse("falsex"));
-    
+
     CHECK(json::parse(" true "));
     CHECK(!json::parse("t"));
     CHECK(!json::parse("tr"));
@@ -291,7 +291,7 @@ TEST("json::parse object") {
 }
 
 TEST("json::parse demo.json") {
-    const char* data = 
+    const char* data =
 R"({
     "Image": {
         "Width":  800,
@@ -310,27 +310,27 @@ R"({
     CHECK(j);
     REQUIRE(j.value().is_object());
     auto image = j.value()["Image"];
-    REQUIRE(image.is_object()); 
+    REQUIRE(image.is_object());
 
-    REQUIRE(image["Width"].is_number()); 
-    CHECK(image["Width"].get<int32_t>().value() == 800); 
+    REQUIRE(image["Width"].is_number());
+    CHECK(image["Width"].get<int32_t>().value() == 800);
 
-    REQUIRE(image["Height"].is_number()); 
-    CHECK(image["Height"].get<int32_t>().value() == 600); 
+    REQUIRE(image["Height"].is_number());
+    CHECK(image["Height"].get<int32_t>().value() == 600);
 
-    REQUIRE(image["Title"].is_string()); 
-    CHECK(image["Title"].get<std::string>().value() == "View from 15th Floor"); 
-    
+    REQUIRE(image["Title"].is_string());
+    CHECK(image["Title"].get<std::string>().value() == "View from 15th Floor");
+
     auto th = image["Thumbnail"];
-    REQUIRE(th.is_object()); 
+    REQUIRE(th.is_object());
     REQUIRE(th["Url"].is_string());
-    CHECK(th["Url"].get<std::string>().value() == "http://www.example.com/image/481989943"); 
+    CHECK(th["Url"].get<std::string>().value() == "http://www.example.com/image/481989943");
 
     REQUIRE(th["Height"].is_number());
-    CHECK(th["Height"].get<int32_t>().value() == 125); 
+    CHECK(th["Height"].get<int32_t>().value() == 125);
 
     REQUIRE(th["Width"].is_number());
-    CHECK(th["Width"].get<int32_t>().value() == 100); 
+    CHECK(th["Width"].get<int32_t>().value() == 100);
 
     REQUIRE(image["Animated"].is_boolean());
     CHECK(!image["Animated"].get<bool>().value());

@@ -44,7 +44,7 @@ int main(int argc, const char** argv) {
         j = -128;
         std::cout << static_cast<int>(j.get<int8_t>().value()) << "\n";
     }
-    
+
     for (auto& it : j) {
         std::cout << it << "\n";
     }
@@ -64,7 +64,7 @@ int main(int argc, const char** argv) {
     j3.push_back(5);
     j3.push_back(7);
     std::cout << j3[0] << ", " << j3[1] << "\n";
-   
+
     std::cout << j3 << "\n";
     for (const auto& v : j3) {
         std::cout << v << "\n";
@@ -169,14 +169,14 @@ int main(int argc, const char** argv) {
     {
         json j("hello");
         std::cout << j << "\n";
-        std::string s = std::move(j).get<std::string>().value(); 
+        std::string s = std::move(j).get<std::string>().value();
         std::cout << s << "\n";
         std::cout << j << "\n";
     }
     {
         json j(true);
         std::cout << j << "\n";
-        auto s = std::move(j).get<bool>().value(); 
+        auto s = std::move(j).get<bool>().value();
         std::cout << s << "\n";
         std::cout << j << "\n";
     }

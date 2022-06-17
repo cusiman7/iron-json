@@ -45,7 +45,7 @@ inline void do_not_optimize(Tp const& value) {
 }
 
 struct timer {
-    inline void start() { 
+    inline void start() {
         start_time = clock::now();
     }
 
@@ -60,11 +60,11 @@ struct timer {
 };
 
 static void print_stats(const char* name, double avg_s, double mb_s, int32_t iterations) {
-    std::cout << std::left << std::setw(40) << name 
-              << std::setw(20) << avg_s  
-              << std::setw(20) << mb_s  
-              << std::setw(20) << allocations 
-              << std::setw(20) << iterations << "\n"; 
+    std::cout << std::left << std::setw(40) << name
+              << std::setw(20) << avg_s
+              << std::setw(20) << mb_s
+              << std::setw(20) << allocations
+              << std::setw(20) << iterations << "\n";
 }
 
 static void bench_parse_github_events() {
@@ -77,7 +77,7 @@ static void bench_parse_github_events() {
         json::parse(file);
         t.stop();
     }
-    double avg = t.accumulated_seconds / iterations; 
+    double avg = t.accumulated_seconds / iterations;
     allocations /= iterations;
     print_stats(__FUNCTION__, avg, (file.size() / avg) / (1024*1024), iterations);
 }
@@ -92,7 +92,7 @@ static void bench_parse_san_fran() {
         json::parse(file);
         t.stop();
     }
-    double avg = t.accumulated_seconds / iterations; 
+    double avg = t.accumulated_seconds / iterations;
     allocations /= iterations;
     print_stats(__FUNCTION__, avg, (file.size() / avg) / (1024*1024), iterations);
 }
@@ -107,7 +107,7 @@ static void bench_parse_canada() {
         json::parse(file);
         t.stop();
     }
-    double avg = t.accumulated_seconds / iterations; 
+    double avg = t.accumulated_seconds / iterations;
     allocations /= iterations;
     print_stats(__FUNCTION__, avg, (file.size() / avg) / (1024*1024), iterations);
 }
@@ -122,17 +122,17 @@ static void bench_parse_twitter() {
         json::parse(file);
         t.stop();
     }
-    double avg = t.accumulated_seconds / iterations; 
+    double avg = t.accumulated_seconds / iterations;
     allocations /= iterations;
     print_stats(__FUNCTION__, avg, (file.size() / avg) / (1024*1024), iterations);
 }
 } // namespace bench
 
 int main() {
-    std::cout << std::left << std::setw(40) << "benchmark" 
-              << std::setw(20) << "time (s)" 
-              << std::setw(20) << "MB/s" 
-              << std::setw(20) << "allocations" 
+    std::cout << std::left << std::setw(40) << "benchmark"
+              << std::setw(20) << "time (s)"
+              << std::setw(20) << "MB/s"
+              << std::setw(20) << "allocations"
               << std::setw(20) << "iterations";
     std::cout << "\n______________________________________________________________________\n";
     bench::bench_parse_github_events();
