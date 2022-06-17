@@ -1027,17 +1027,13 @@ public:
                     c = skip_whitespace(c + 1, cend);
                     return json::array();
                 case '"': { // Begin String
-                    parsed_string ps = parse_string(c, cend);
-                    switch (ps.t) {
-                        case parsed_string::type::string:
-                            assert(*c == '"');
-                            c = skip_whitespace(ps.end + 1, cend);
-                            return json(std::string(ps.s.data, ps.s.size));
-                        case parsed_string::type::error:
-                            c = ps.end; 
-                            return error(ps.error);
+                    auto ps = parse_string(&c, cend);
+                    if (!ps) {
+                        return error(ps.error());
                     }
-                    break;
+                    assert(*c == '"');
+                    c = skip_whitespace(c + 1, cend);
+                    return json(std::move(ps).value());
                 }
                 case 't': // begin true
                     if (cend - c < 4) {
@@ -1265,15 +1261,13 @@ public:
                 // { "name": value, "name2": value2, ... }
                 //   ^ 
                 string_t key;
-                parsed_string ps = parse_string(c, cend);
-                switch (ps.t) {
-                    case parsed_string::type::string:
-                        c = ps.end + 1;
-                        key = string_t(ps.s.data, ps.s.size);
-                        break;
-                    case parsed_string::type::error:
-                        return error(ps.error);
+                auto ps = parse_string(&c, cend);
+                if (!ps) {
+                    return error(ps.error());
                 }
+                assert(*c == '"');
+                c++;
+                key = std::move(ps).value();
 
                 // { "name": value, "name2": value2, ... }
                 //         ^
@@ -1315,36 +1309,17 @@ public:
 
 //private:
     // Parsing
-    struct string {
-        const char* data;
-        size_t size;
-    };
+    using parsed_string = result<string_t, const char*>;
 
-    struct parsed_string {
-        enum class type {
-            string,
-            error,
-        };
-        const char* end;
-        type t;
-        union {
-            string s;
-            const char* error;
-        };
-
-        parsed_string(const char* end, string s) : end(end), t(type::string), s(s) {}
-        parsed_string(const char* end, const char* e) : end(end), t(type::error), error(e) {}
-    };
-
-    static parsed_string parse_string(const char* c, const char* cend) {
-        assert(*c == '"');
-        c++;
-        const char* data = c;
+    static parsed_string parse_string(const char** c, const char* cend) {
+        assert(**c == '"');
+        (*c)++;
+        const char* data = *c;
 
         // TODO: UTF-8 validation
-        while (c != cend - 1) {
-            if (c[0] == '\\') {
-                switch (c[1]) {
+        while (*c != cend - 1) {
+            if ((*c)[0] == '\\') {
+                switch ((*c)[1]) {
                     case '"':
                     case '\\':
                     case '/':
@@ -1353,27 +1328,27 @@ public:
                     case 'n':
                     case 'r':
                     case 't':
-                        c += 2;
+                        (*c) += 2;
                         break;
                     case 'u':
                         // TODO: 4 hex digits
-                        return parsed_string(c, "\\u Hex digits are not supported\n");
+                        return error<const char*>("\\u Hex digits are not supported\n");
                 }
-            } else if (c[0] == '"') {
-                return parsed_string(c, string{data, static_cast<size_t>(c - data)});
-            } else if (c[1] == '"') {
-                c++;
-                return parsed_string(c, string{data, static_cast<size_t>(c - data)});
+            } else if ((*c)[0] == '"') {
+                return string_t(data, static_cast<size_t>(*c - data));
+            } else if ((*c)[1] == '"') {
+                (*c)++;
+                return string_t(data, static_cast<size_t>(*c - data));
             } else {
-                c++;
+                (*c)++;
             }
         }
 
-        if (c[0] == '"') {
-            return parsed_string(c, string{data, static_cast<size_t>(c - data)});
+        if ((*c)[0] == '"') {
+            return string_t(data, static_cast<size_t>(*c - data));
         }
 
-        return parsed_string(c, "Unexpected end of string while parsing string");
+        return error<const char*>("Unexpected end of string while parsing string");
     }
 
     enum class number_t {
