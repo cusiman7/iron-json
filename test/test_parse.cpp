@@ -200,6 +200,14 @@ TEST("json::parse strings") {
         CHECK(ss.str() == R"("\\\\\\\\")");
     }
     {
+        auto j = json::parse(R"("\\\\\\\"")");
+        REQUIRE(j);
+        CHECK(j.value().get<std::string>().value() == "\\\\\\\"");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("\\\\\\\"")");
+    }
+    {
         auto j = json::parse(R"("\"\"\"\"")");
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "\"\"\"\"");
