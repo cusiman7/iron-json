@@ -343,3 +343,18 @@ R"({
     CHECK(ids[2].get<int32_t>().value() == 234);
     CHECK(ids[3].get<int32_t>().value() == 38793);
 }
+
+TEST("parse UTF-8") {
+    {
+        auto j = json::parse(u8R"("olá mundo")");
+        CHECK(j);
+    }
+    {
+        auto j = json::parse(u8R"("你好世界")");
+        CHECK(j);
+    }
+    {
+        auto j = json::parse("\"\xa0\xa1\"");
+        CHECK(!j);
+    }
+}

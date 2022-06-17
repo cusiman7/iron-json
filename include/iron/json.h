@@ -1346,13 +1346,7 @@ public:
     // Parsing
     using parsed_string = result<string_t, const char*>;
 
-    /*
-     * We parse strings in a single pass in the common case and two passes worst-case.
-     * The first pass validates the string is UTF-8 and identifies the end of the string.
-     * If the string has no escape characters '\' the string is memcopied and returned.
-     * If any escape characters were identified during validation and length checking
-     * a second pass is performed to decode the string.
-     */
+    // Only called by parse_string when escape characters are found
     static parsed_string parse_string_slow(const char* str_start, const char* str_end) {
         string_t ret;
         // Reserve enough space for the output.
@@ -1395,12 +1389,24 @@ public:
                 start = curr;
                 continue;
             }
-            curr++;
+            // The string has already been UTF-8 validated by parse_string
+            unsigned char byte_0 = *curr;
+            if (byte_0 <= 0x7F) curr++;
+            else if ((byte_0 & 0xE0) == 0xC0) curr += 2;
+            else if ((byte_0 & 0xF0) == 0xE0) curr += 3;
+            else if ((byte_0 & 0xF8) == 0xF0) curr += 4;
         }
         ret.append(start, curr - start);
         return ret;
     }
 
+    /*
+     * We parse strings in a single pass in the common case and two passes worst-case.
+     * The first pass validates the string is UTF-8 and identifies the end of the string.
+     * If the string has no escape characters '\' the string is memcopied and returned.
+     * If any escape characters were identified during validation and length checking
+     * a second pass is performed to decode the string.
+     */
     static parsed_string parse_string(const char** c, const char* cend) {
         assert(**c == '"');
         (*c)++;
@@ -1410,8 +1416,21 @@ public:
         while (true) {
             while (*c != cend && **c != '"') {
                 take_slow_path |= (**c == '\\');
-                // TODO: UTF-8 validation here
+
+                // Naive UTF-8 validation
+                unsigned char byte_0 = **c;
+                int n = 0;
+                if (0x00 <= byte_0 && byte_0 <= 0x7F) n = 0;
+                else if ((byte_0 & 0xE0) == 0xC0) n = 1;
+                else if ((byte_0 & 0xF0) == 0xE0) n = 2;
+                else if ((byte_0 & 0xF8) == 0xF0) n = 3;
+                else return error<const char*>("Invalid UTF-8 codepoint");
+
                 (*c)++;
+                for (int i = 0; i < n; i++) {
+                    if ((*c + i) == cend || (((unsigned char)**c) & 0xC0) != 0x80) return error<const char*>("Invalid UTF-8 codepoint");
+                }
+                (*c) += n;
             }
             if (*c == cend) {
                 return error<const char*>("Unexpected end of string when parsing string");
