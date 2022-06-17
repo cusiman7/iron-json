@@ -19,6 +19,12 @@ template <typename T, typename U>
 bool within_limits(U n) {
     return n >= std::numeric_limits<T>::min() && n <= std::numeric_limits<T>::max();
 }
+
+template <typename T, typename U>
+bool under_max(U n) {
+    static_assert(std::is_unsigned<U>::value);
+    return n <= std::numeric_limits<T>::max();
+}
 } // namespace
 
 template <typename E>
@@ -452,6 +458,8 @@ public:
     result<int8_t, json_error> get<int8_t>() const& {
         if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
             return value.int_num;
+        } else if (type == value_t::uint_num && under_max<int8_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return error(json_error::invalid_type);
     }
@@ -460,6 +468,8 @@ public:
     result<int8_t, json_error> get<int8_t>() && {
         if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
             return value.int_num;
+        } else if (type == value_t::uint_num && under_max<int8_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return error(json_error::invalid_type);
     }
@@ -468,6 +478,8 @@ public:
     result<int16_t, json_error> get<int16_t>() const& {
         if (type == value_t::int_num && within_limits<int16_t>(value.int_num)) {
             return value.int_num;
+        } else if (type == value_t::uint_num && under_max<int16_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return error(json_error::invalid_type);
     }
@@ -476,6 +488,8 @@ public:
     result<int16_t, json_error> get<int16_t>() && {
         if (type == value_t::int_num && within_limits<int16_t>(value.int_num)) {
             return value.int_num;
+        } else if (type == value_t::uint_num && under_max<int16_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return error(json_error::invalid_type);
     }
@@ -484,6 +498,8 @@ public:
     result<int32_t, json_error> get<int32_t>() const& {
         if (type == value_t::int_num && within_limits<int32_t>(value.int_num)) {
             return value.int_num;
+        } else if (type == value_t::uint_num && under_max<int32_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return error(json_error::invalid_type);
     }
@@ -492,6 +508,8 @@ public:
     result<int32_t, json_error> get<int32_t>() && {
         if (type == value_t::int_num && within_limits<int32_t>(value.int_num)) {
             return value.int_num;
+        } else if (type == value_t::uint_num && under_max<int32_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return error(json_error::invalid_type);
     }
@@ -500,6 +518,8 @@ public:
     result<int64_t, json_error> get<int64_t>() const& {
         if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
             return value.int_num;
+        } else if (type == value_t::uint_num && under_max<int64_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return error(json_error::invalid_type);
     }
@@ -508,6 +528,8 @@ public:
     result<int64_t, json_error> get<int64_t>() && {
         if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
             return value.int_num;
+        } else if (type == value_t::uint_num && under_max<int64_t>(value.uint_num)) {
+            return value.uint_num;
         }
         return error(json_error::invalid_type);
     }

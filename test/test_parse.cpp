@@ -224,3 +224,57 @@ TEST("json::parse object") {
     CHECK(json::parse(R"({"key": true, "key2": [null, "key4", 123]})"));
     CHECK(json::parse(R"([{"key": true}, {"key2": [null, "str4", 123]}])"));
 }
+
+TEST("json::parse demo.json") {
+    const char* data = 
+R"({
+    "Image": {
+        "Width":  800,
+        "Height": 600,
+        "Title":  "View from 15th Floor",
+        "Thumbnail": {
+            "Url":    "http://www.example.com/image/481989943",
+            "Height": 125,
+            "Width":  100
+        },
+        "Animated" : false,
+        "IDs": [116, 943, 234, 38793]
+      }
+})";
+    auto j = json::parse(data);
+    CHECK(j);
+    REQUIRE(j.value().is_object());
+    auto image = j.value()["Image"];
+    REQUIRE(image.is_object()); 
+
+    REQUIRE(image["Width"].is_number()); 
+    CHECK(image["Width"].get<int32_t>().value() == 800); 
+
+    REQUIRE(image["Height"].is_number()); 
+    CHECK(image["Height"].get<int32_t>().value() == 600); 
+
+    REQUIRE(image["Title"].is_string()); 
+    CHECK(image["Title"].get<std::string>().value() == "View from 15th Floor"); 
+    
+    auto th = image["Thumbnail"];
+    REQUIRE(th.is_object()); 
+    REQUIRE(th["Url"].is_string());
+    CHECK(th["Url"].get<std::string>().value() == "http://www.example.com/image/481989943"); 
+
+    REQUIRE(th["Height"].is_number());
+    CHECK(th["Height"].get<int32_t>().value() == 125); 
+
+    REQUIRE(th["Width"].is_number());
+    CHECK(th["Width"].get<int32_t>().value() == 100); 
+
+    REQUIRE(image["Animated"].is_boolean());
+    CHECK(!image["Animated"].get<bool>().value());
+
+    REQUIRE(image["IDs"].is_array());
+    auto ids = image["IDs"];
+    REQUIRE(ids.size() == 4);
+    CHECK(ids[0].get<int32_t>().value() == 116);
+    CHECK(ids[1].get<int32_t>().value() == 943);
+    CHECK(ids[2].get<int32_t>().value() == 234);
+    CHECK(ids[3].get<int32_t>().value() == 38793);
+}
