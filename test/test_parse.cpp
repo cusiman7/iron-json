@@ -3,6 +3,8 @@
 
 #include <iron/json.h>
 
+#include <sstream>
+
 using fe::json;
 
 TEST("json::parse numbers") {
@@ -145,26 +147,89 @@ TEST("json::parse strings") {
         auto j = json::parse(R"("")"); 
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("")");
     }
     {
         auto j = json::parse(R"("\n")"); 
         REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == R"(\n)");
+        CHECK(j.value().get<std::string>().value() == "\n");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("\n")");
     }
     {
         auto j = json::parse(R"("\\n")"); 
         REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == R"(\\n)");
+        CHECK(j.value().get<std::string>().value() == "\\n");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("\\n")");
     }
     {
         auto j = json::parse(R"("HelloWorld")"); 
         REQUIRE(j);
         CHECK(j.value().get<std::string>().value() == "HelloWorld");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("HelloWorld")");
     }
     {
         auto j = json::parse(R"("HelloWorld\n")"); 
         REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == R"(HelloWorld\n)");
+        CHECK(j.value().get<std::string>().value() == "HelloWorld\n");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("HelloWorld\n")");
+    }
+    {
+        auto j = json::parse(R"("Hello\"World\n")"); 
+        REQUIRE(j);
+        CHECK(j.value().get<std::string>().value() == "Hello\"World\n");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("Hello\"World\n")");
+    }
+    {
+        auto j = json::parse(R"("\\\\\\\\")"); 
+        REQUIRE(j);
+        CHECK(j.value().get<std::string>().value() == "\\\\\\\\");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("\\\\\\\\")");
+    }
+    {
+        auto j = json::parse(R"("\"\"\"\"")"); 
+        REQUIRE(j);
+        CHECK(j.value().get<std::string>().value() == "\"\"\"\"");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("\"\"\"\"")");
+    }
+    {
+        auto j = json::parse(R"("\"Name rue")"); 
+        REQUIRE(j);
+        CHECK(j.value().get<std::string>().value() == "\"Name rue");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("\"Name rue")");
+    }
+    {
+        auto j = json::parse(R"("- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.")"); 
+        REQUIRE(j);
+        CHECK(j.value().get<std::string>().value() == "- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.")");
+    }
+    {
+        auto j = json::parse(R"("\"\\\/\b\f\n\r\t")"); 
+        REQUIRE(j);
+        CHECK(j.value().get<std::string>().value() == "\"\\/\b\f\n\r\t");
+        std::stringstream ss;
+        ss << j.value();
+        CHECK(ss.str() == R"("\"\\/\b\f\n\r\t")");
     }
 }
 

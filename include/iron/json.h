@@ -25,6 +25,12 @@ bool under_max(U n) {
     static_assert(std::is_unsigned<U>::value);
     return n <= std::numeric_limits<T>::max();
 }
+
+static const char* control_chars_hex[32] = {"\\u0000", "\\u0001", "\\u0002", "\\u0003", 
+    "\\u0004", "\\u0005", "\\u0006", "\\u0007", "\\b", "\\t", "\\n",
+    "\\u000B", "\\f", "\\r", "\\u000E", "\\u000F", "\\u0010", "\\u0011",
+    "\\u0012", "\\u0013", "\\u0014", "\\u0015", "\\u0016", "\\u0017", "\\u0018",
+    "\\u0019", "\\u001A", "\\u001B", "\\u001C", "\\u001D", "\\u001E", "\\u001F"}; 
 } // namespace
 
 template <typename E>
@@ -655,6 +661,35 @@ public:
     }
 
     static std::ostream& pretty_print(std::ostream& os, const json& j, size_t& indent) {
+        auto write_string = [&os](const string_t& str) -> std::ostream& {
+            os.put('"');
+            for (const unsigned char c : str) {
+                if (c <= 0x1F || c == '"' || c == '\\') {
+                    switch (c) {
+                        case '"':
+                            os.write("\\\"", 2);
+                            break;
+                        case '\\':
+                            os.write("\\\\", 2);
+                            break;
+                        case '\b':
+                        case '\f':
+                        case '\n':
+                        case '\r':
+                        case '\t':
+                            os.write(control_chars_hex[c], 2);
+                            break;
+                         default:
+                            os.write(control_chars_hex[c], 6);
+                            break;
+                    }
+                } else {
+                    os.put(c);
+                }
+            }
+            os.put('"');
+            return os;
+        };
         switch (j.type) {
             case value_t::object: {
                 if (j.value.object->empty()) {
@@ -669,13 +704,13 @@ public:
                 auto e = j.value.object->end();
                 while (n != e) {
                     std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
-                    os << "\"" << b->first << "\": ";
+                    write_string(b->first) << ": ";
                     pretty_print(os, b->second, indent) << ",\n";
                     ++b;
                     ++n;
                 }
                 std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
-                os << "\"" << b->first << "\": ";
+                write_string(b->first) << ": ";
                 pretty_print(os, b->second, indent) << "\n";
                 indent -= 2;
                 std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
@@ -703,7 +738,7 @@ public:
                 break;
             }
             case value_t::string:
-                os << "\"" << *j.value.string << "\"";
+                write_string(*j.value.string);
                 break;
             case value_t::int_num:
                 os << j.value.int_num;
@@ -1311,44 +1346,97 @@ public:
     // Parsing
     using parsed_string = result<string_t, const char*>;
 
+    /*
+     * We parse strings in a single pass in the common case and two passes worst-case. 
+     * The first pass validates the string is UTF-8 and identifies the end of the string.
+     * If the string has no escape characters '\' the string is memcopied and returned. 
+     * If any escape characters were identified during validation and length checking
+     * a second pass is performed to decode the string.
+     */
+    static parsed_string parse_string_slow(const char* str_start, const char* str_end) {
+        string_t ret;
+        // Reserve enough space for the output.
+        // At worst this is 6x larger than it needs to be because the entire string could be
+        // 6 char length hex codes which map to 1 byte utf-8 codepoints (\u0041 == 'A')
+        ret.reserve(str_end - str_start); 
+       
+        const char* start = str_start;
+        const char* curr = str_start;
+        while (curr != str_end) {
+            // TODO: UTF Hexcodes to UTF-8
+            if (*curr == '\\') {
+                ret.append(start, curr - start);
+                curr++;
+                switch (*curr) {
+                    case '"':
+                    case '\\': 
+                    case '/':
+                        ret.append(1, *curr);
+                        break;
+                    case 'b':
+                        ret.append(1, '\b');
+                        break;
+                    case 'f':
+                        ret.append(1, '\f');
+                        break;
+                    case 'n':
+                        ret.append(1, '\n');
+                        break;
+                    case 'r':
+                        ret.append(1, '\r');
+                        break;
+                    case 't':
+                        ret.append(1, '\t');
+                        break;
+                    default:
+                        return error<const char*>("Invalid escape sequence while parsing string");
+                }
+                curr++;
+                start = curr;
+                continue;
+            }
+            curr++;
+        }
+        ret.append(start, curr - start);
+        return ret;
+    }
+
     static parsed_string parse_string(const char** c, const char* cend) {
         assert(**c == '"');
         (*c)++;
-        const char* data = *c;
+        const char* str_start = *c;
+        bool take_slow_path = false;
 
-        // TODO: UTF-8 validation
-        while (*c != cend - 1) {
-            if ((*c)[0] == '\\') {
-                switch ((*c)[1]) {
-                    case '"':
-                    case '\\':
-                    case '/':
-                    case 'b':
-                    case 'f':
-                    case 'n':
-                    case 'r':
-                    case 't':
-                        (*c) += 2;
-                        break;
-                    case 'u':
-                        // TODO: 4 hex digits
-                        return error<const char*>("\\u Hex digits are not supported\n");
-                }
-            } else if ((*c)[0] == '"') {
-                return string_t(data, static_cast<size_t>(*c - data));
-            } else if ((*c)[1] == '"') {
-                (*c)++;
-                return string_t(data, static_cast<size_t>(*c - data));
-            } else {
+        while (true) {
+            while (*c != cend && **c != '"') {
+                take_slow_path |= (**c == '\\'); 
+                // TODO: UTF-8 validation here
                 (*c)++;
             }
-        }
+            if (*c == cend) {
+                return error<const char*>("Unexpected end of string when parsing string");
+            }
 
-        if ((*c)[0] == '"') {
-            return string_t(data, static_cast<size_t>(*c - data));
-        }
+            if (!take_slow_path) {
+                assert(**c == '"');
+                return string_t(str_start, static_cast<size_t>(*c - str_start));
+            } 
+            
+            // We may not be at the end of the string yet as it may simply have been escaped
+            int escaped = 0;
+            const char* peek_back = (*c - 1);
+            while (peek_back != str_start - 1 && *peek_back == '\\') {
+                escaped ^= 1;
+                peek_back--;
+            }
 
-        return error<const char*>("Unexpected end of string while parsing string");
+            if (!escaped) {
+                assert(**c == '"');
+                return parse_string_slow(str_start, *c);
+            }
+            // Found an escaped quote, continue looking for end of string
+            (*c)++;
+        }
     }
 
     enum class number_t {

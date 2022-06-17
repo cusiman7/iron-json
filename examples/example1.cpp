@@ -22,7 +22,7 @@ int main(int argc, const char** argv) {
     if (argc > 1) {
         auto j = json::parse(read_file(argv[1]));
         if (j) {
-            std::cout << j.value() << "\n";
+            std::cout << j.value();
         } else {
             std::cout << j.error();
         }
