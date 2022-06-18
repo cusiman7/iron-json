@@ -663,7 +663,8 @@ public:
     static std::ostream& pretty_print(std::ostream& os, const json& j, size_t& indent) {
         auto write_string = [&os](const string_t& str) -> std::ostream& {
             os.put('"');
-            for (const unsigned char c : str) {
+            for (size_t i = 0; i < str.size(); i++) {
+                unsigned char c = str[i];
                 if (c <= 0x1F || c == '"' || c == '\\') {
                     switch (c) {
                         case '"':
@@ -684,7 +685,7 @@ public:
                             break;
                     }
                 } else {
-                    os.put(c);
+                    os.put(str[i]);
                 }
             }
             os.put('"');
@@ -1160,7 +1161,7 @@ public:
                 // Expect a single value document
                 c = skip_whitespace(c, cend);
                 if (c != cend) {
-                    return error<const char*>("Unexpected character");
+                    return error<const char*>("Unexpected character:");
                 }
                 return value;
             }
@@ -1356,8 +1357,25 @@ public:
 
         const char* start = str_start;
         const char* curr = str_start;
+
+        auto parse_utf16_unit = [&curr]() -> result<uint16_t, const char*> {
+            uint16_t codeunit = 0;
+            for (int16_t i = 12; i >= 0; i -= 4) {
+                curr++;
+                if (*curr >= '0' && *curr <= '9') {
+                    codeunit |= static_cast<uint16_t>(*curr - '0') << i;
+                } else if (*curr >= 'A' && *curr <= 'F') {
+                    codeunit |= static_cast<uint16_t>((*curr - 'A') + 10) << i;
+                } else if (*curr >= 'a' && *curr <= 'f') {
+                    codeunit |= static_cast<uint16_t>((*curr - 'a') + 10) << i;
+                } else {
+                    return error<const char*>("Invalid UTF-16 codeunit");
+                }
+            }
+            return codeunit;
+        };
+
         while (curr != str_end) {
-            // TODO: UTF Hexcodes to UTF-8
             if (*curr == '\\') {
                 ret.append(start, curr - start);
                 curr++;
@@ -1382,6 +1400,61 @@ public:
                     case 't':
                         ret.append(1, '\t');
                         break;
+                    case 'u': {
+                        if (curr + 4 >= str_end) {
+                            return error<const char*>("Invalid UTF-16 codeuint");
+                        }
+                        auto maybe_codeunit = parse_utf16_unit();
+                        if (!maybe_codeunit) {
+                            // We tried to parse \uXXXX but failed
+                            return error(maybe_codeunit.error());
+                        }
+                        uint16_t codeunit = maybe_codeunit.value();
+                        if (codeunit <= 0x7F) {
+                            // 0xxxxxxx
+                            ret.append(1, static_cast<char>(codeunit));
+                        } else if (codeunit >= 0x80 && codeunit <= 0x7FF) {
+                            // 110xxxxx	10xxxxxx
+                            char bytes[2];
+                            bytes[0] = 0xC0 | (codeunit >> 6);
+                            bytes[1] = 0x80 | (codeunit & 0x3F);
+                            ret.append(bytes, 2);
+                        } else if ((codeunit >= 0x800 && codeunit <= 0xD7FF) || (codeunit >= 0xE000 && codeunit <= 0xFFFF)) {
+                            // 1110xxxx	10xxxxxx 10xxxxxx
+                            char bytes[3];
+                            bytes[0] = 0xE0 | (codeunit >> 12);
+                            bytes[1] = 0x80 | ((codeunit >> 6) & 0x3F);
+                            bytes[2] = 0x80 | (codeunit & 0x3F);
+                            ret.append(bytes, 3);
+                        } else if (codeunit >= 0xD800 && codeunit <= 0xDFFF) {
+                            // We just parsed part one of 2 surrogates.
+                            // If this surrogate is alone, replace it with the replacement char �
+                            if (curr + 5 >= str_end || curr[1] != '\\' || curr[2] != 'u') {
+                                ret.append(u8"�");
+                                break;
+                            }  
+                            curr += 2;
+                            auto maybe_surrogate = parse_utf16_unit();
+                            if (!maybe_surrogate) {
+                                // We tried to parse \uXXXX but failed
+                                return error(maybe_surrogate.error());
+                            }
+                            uint16_t codeunit_2 = maybe_surrogate.value();
+                            uint32_t codepoint = static_cast<uint32_t>(((codeunit - 0xD800) * 0x400) + (codeunit_2 - 0xDC00) + 0x10000);
+                            if (codepoint < 0x10000 || codepoint > 0x10FFFF) {
+                                ret.append(u8"�");
+                                break;
+                            }
+                            // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+                            char bytes[4];
+                            bytes[0] = 0xF0 | (codepoint >> 18);
+                            bytes[1] = 0x80 | ((codepoint >> 12) & 0x3F);
+                            bytes[2] = 0x80 | ((codepoint >> 6) & 0x3F);
+                            bytes[3] = 0x80 | (codepoint & 0x3F);
+                            ret.append(bytes, 4);
+                        }
+                        break;
+                    }
                     default:
                         return error<const char*>("Invalid escape sequence while parsing string");
                 }

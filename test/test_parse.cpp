@@ -143,102 +143,34 @@ TEST("json::parse whitespace") {
 }
 
 TEST("json::parse strings") {
-    {
-        auto j = json::parse(R"("")");
+    auto round_trip_string = [](const std::string& in, const std::string& raw, const std::string& out) {
+        auto j = json::parse(in);
+        if (!j) std::cout << j.error() << "\n";
         REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "");
+        CHECK(j.value().get<std::string>().value() == raw);
         std::stringstream ss;
         ss << j.value();
-        CHECK(ss.str() == R"("")");
-    }
-    {
-        auto j = json::parse(R"("\n")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "\n");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("\n")");
-    }
-    {
-        auto j = json::parse(R"("\\n")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "\\n");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("\\n")");
-    }
-    {
-        auto j = json::parse(R"("HelloWorld")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "HelloWorld");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("HelloWorld")");
-    }
-    {
-        auto j = json::parse(R"("HelloWorld\n")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "HelloWorld\n");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("HelloWorld\n")");
-    }
-    {
-        auto j = json::parse(R"("Hello\"World\n")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "Hello\"World\n");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("Hello\"World\n")");
-    }
-    {
-        auto j = json::parse(R"("\\\\\\\\")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "\\\\\\\\");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("\\\\\\\\")");
-    }
-    {
-        auto j = json::parse(R"("\\\\\\\"")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "\\\\\\\"");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("\\\\\\\"")");
-    }
-    {
-        auto j = json::parse(R"("\"\"\"\"")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "\"\"\"\"");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("\"\"\"\"")");
-    }
-    {
-        auto j = json::parse(R"("\"Name rue")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "\"Name rue");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("\"Name rue")");
-    }
-    {
-        auto j = json::parse(R"("- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.")");
-    }
-    {
-        auto j = json::parse(R"("\"\\\/\b\f\n\r\t")");
-        REQUIRE(j);
-        CHECK(j.value().get<std::string>().value() == "\"\\/\b\f\n\r\t");
-        std::stringstream ss;
-        ss << j.value();
-        CHECK(ss.str() == R"("\"\\/\b\f\n\r\t")");
-    }
+        CHECK(ss.str() == out);
+    };
+    round_trip_string(R"("")", "", R"("")");
+    round_trip_string(R"("\n")", "\n", R"("\n")");
+    round_trip_string(R"("\\n")", "\\n", R"("\\n")");
+    round_trip_string(R"("\\n")", "\\n", R"("\\n")");
+    round_trip_string(R"("HelloWorld")", "HelloWorld", R"("HelloWorld")");
+    round_trip_string(R"("HelloWorld\n")", "HelloWorld\n", R"("HelloWorld\n")");
+    round_trip_string(R"("Hello\"World\n")", "Hello\"World\n", R"("Hello\"World\n")");
+    round_trip_string(R"("\\\\\\\\")", "\\\\\\\\", R"("\\\\\\\\")");
+    round_trip_string(R"("\\\\\\\"")", "\\\\\\\"", R"("\\\\\\\"")");
+    round_trip_string(R"("\"\"\"\"")", "\"\"\"\"", R"("\"\"\"\"")");
+    round_trip_string(R"("\"Name rue")", "\"Name rue", R"("\"Name rue")");
+    round_trip_string(R"("- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.")",
+        "- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.",
+        R"("- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.")");
+    round_trip_string(R"("\"\\\/\b\f\n\r\t")", "\"\\/\b\f\n\r\t", R"("\"\\/\b\f\n\r\t")");
+    round_trip_string(R"("\u0060\u012a\u12AB")", "\u0060\u012a\u12AB", "\"\u0060\u012a\u12AB\""); 
+    round_trip_string(R"("\u0000")", std::string("\0", 1), R"("\u0000")"); 
+    round_trip_string(R"("\uD801\udc37")", u8"𐐷", u8"\"𐐷\""); 
+    round_trip_string(R"("\ud800")", u8"�", u8"\"�\""); 
 }
 
 TEST("json::parse null false true") {

@@ -15,6 +15,7 @@ target_link_libraries(example1 ironjson)
 add_executable(test
     test/test.cpp
     test/test_parse.cpp
+    test/test_minefield.cpp
 )
 target_link_libraries(test ironjson)
 
