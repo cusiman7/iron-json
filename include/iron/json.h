@@ -26,7 +26,7 @@ bool under_max(U n) {
     return n <= std::numeric_limits<T>::max();
 }
 
-static const char* control_chars_hex[32] = {"\\u0000", "\\u0001", "\\u0002", "\\u0003",
+static const char* json_control_char_codes[32] = {"\\u0000", "\\u0001", "\\u0002", "\\u0003",
     "\\u0004", "\\u0005", "\\u0006", "\\u0007", "\\b", "\\t", "\\n",
     "\\u000B", "\\f", "\\r", "\\u000E", "\\u000F", "\\u0010", "\\u0011",
     "\\u0012", "\\u0013", "\\u0014", "\\u0015", "\\u0016", "\\u0017", "\\u0018",
@@ -677,10 +677,10 @@ public:
                         case '\n':
                         case '\r':
                         case '\t':
-                            os.write(control_chars_hex[c], 2);
+                            os.write(json_control_char_codes[c], 2);
                             break;
                          default:
-                            os.write(control_chars_hex[c], 6);
+                            os.write(json_control_char_codes[c], 6);
                             break;
                     }
                 } else {
@@ -1428,7 +1428,7 @@ public:
 
                 (*c)++;
                 for (int i = 0; i < n; i++) {
-                    if ((*c + i) == cend || (((unsigned char)**c) & 0xC0) != 0x80) return error<const char*>("Invalid UTF-8 codepoint");
+                    if ((*c + i) == cend || (((unsigned char)*(*c+i)) & 0xC0) != 0x80) return error<const char*>("Invalid UTF-8 codepoint");
                 }
                 (*c) += n;
             }
