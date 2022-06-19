@@ -4,11 +4,20 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <dlfcn.h>
 
 static uint64_t allocations = 0;
 
-void* operator new(size_t size) {
+static void* (*real_malloc)(size_t) = nullptr;
+void* malloc(size_t size) {
+    if (!real_malloc) {
+        real_malloc = reinterpret_cast<void*(*)(size_t)>(dlsym(RTLD_NEXT, "malloc"));
+    }
     allocations++;
+    return real_malloc(size);
+}
+
+void* operator new(size_t size) {
     return malloc(size);
 }
 

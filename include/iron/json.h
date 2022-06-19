@@ -184,17 +184,68 @@ enum class value_t: uint8_t {
     null,
 };
 
+// For now, we leak strings
+struct string {
+    char* data;
+    size_t size;
+
+    friend bool operator==(const string& lhs, const char* rhs) {
+        if (lhs.data && rhs) {
+            size_t rhs_size = strlen(rhs);
+            if (lhs.size != rhs_size) return false;
+            return std::memcmp(lhs.data, rhs, lhs.size) == 0;
+        }
+        return !lhs.data && !rhs;
+    }
+
+    friend bool operator==(const char* lhs, const string& rhs) {
+        return (rhs == lhs); 
+    }
+
+    friend bool operator!=(const string& lhs, const char* rhs) {
+        return !(lhs == rhs);
+    }
+    
+    friend bool operator!=(const char* rhs, const string& lhs) {
+        return !(lhs == rhs);
+    }
+    
+    friend bool operator==(const string& lhs, const std::string& rhs) {
+        if (lhs.data && !rhs.empty() && lhs.size == rhs.size()) {
+            return std::memcmp(lhs.data, rhs.data(), lhs.size) == 0;
+        }
+        return !lhs.data && rhs.empty();
+    }
+    
+    friend bool operator==(const std::string& lhs, const string& rhs) {
+        return (rhs == lhs); 
+    }
+    
+    friend bool operator!=(const string& lhs, const std::string& rhs) {
+        return !(lhs == rhs);
+    }
+    
+    friend bool operator!=(const std::string& lhs, const string& rhs) {
+        return !(lhs == rhs);
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const string& rhs) {
+        os.write(rhs.data, rhs.size);
+        return os;
+    }
+};
+
 class json;
-using object_t = std::vector<std::pair<std::string, json>>;
+using string_t = string;
 using array_t = std::vector<json>;
-using string_t = std::string;
+using object_t = std::vector<std::pair<string_t, json>>;
 
 class json {
     value_t type;
     union json_value {
         object_t* object;
         array_t* array;
-        string_t* string;
+        string_t string;
         int64_t int_num;
         uint64_t uint_num;
         double float_num;
@@ -210,15 +261,42 @@ class json {
                 delete value.array;
                 break;
             case value_t::string:
-                delete value.string;
+                free(value.string.data);
                 break;
             default:
                 break;
         }
     }
+
+    static string_t alloc_string(const char* str) {
+        size_t s = strlen(str);
+        char* data = static_cast<char*>(malloc(s * sizeof(char)));
+        memcpy(data, str, s);
+        return string_t{data, s};
+    }
+    
+    static string_t alloc_string(const char* str, size_t size) {
+        char* data = static_cast<char*>(malloc(size * sizeof(char)));
+        memcpy(data, str, size);
+        return string_t{data, size};
+    }
+
+    static string_t alloc_string(const std::string& str) {
+        size_t s = str.size();
+        char* data = static_cast<char*>(malloc(s * sizeof(char)));
+        memcpy(data, str.data(), s);
+        return string_t{data, s};
+    }
+  
+    static string_t alloc_string(const string_t& str) {
+        char* data = static_cast<char*>(malloc(str.size * sizeof(char)));
+        memcpy(data, str.data, str.size);
+        return string_t{data, str.size};
+    }
+
 public:
     json() : type(value_t::null), value{.object = nullptr} {}
-    json(value_t t) : type(t) {
+    json(value_t t) : type(t), value{.object = nullptr} {
         switch (type) {
             case value_t::object:
                 value.object = new object_t();
@@ -227,7 +305,7 @@ public:
                 value.array = new array_t();
                 return;
             case value_t::string:
-                value.string = new string_t();
+                value.string = {nullptr, 0};
                 return;
             case value_t::int_num:
                 value.int_num = 0;
@@ -247,9 +325,11 @@ public:
         }
     }
     json(nullptr_t null) : type(value_t::null), value{.object = nullptr} {}
-    json(const char* str) : type(value_t::string), value{.string = new string_t(str)} {}
-    json(const std::string& str) : type(value_t::string), value{.string = new string_t(str)} {}
-    json(std::string&& str) : type(value_t::string), value{.string = new string_t(std::move(str))} {}
+    json(const char* str) : type(value_t::string), value{.string = alloc_string(str)} {}
+    json(const std::string& str) : type(value_t::string), value{.string = alloc_string(str)} {}
+private:
+    json(const string& str) : type(value_t::string), value{.string = str} {}
+public:
     json(int num) : type(value_t::int_num), value{.int_num = num} {}
     json(int64_t num) : type(value_t::int_num), value{.int_num = num} {}
     json(uint64_t num) : type(value_t::uint_num), value{.uint_num = num} {}
@@ -260,7 +340,7 @@ public:
     json(const array_t& a) : type(value_t::array), value{.array = new array_t(a)} {}
     json(array_t&& a) : type(value_t::array), value{.array = new array_t(std::move(a))} {}
 
-    json(std::initializer_list<json> init) {
+    json(std::initializer_list<json> init) : value{.object=nullptr} {
         bool looks_like_object = true;
         for (const auto& it : init) {
             looks_like_object = it.is_array() && it.size() == 2 && it[0].is_string();
@@ -273,7 +353,8 @@ public:
             value.object = new object_t();
             value.object->reserve(init.size());
             for (auto& it : init) {
-                value.object->push_back({it[0].get<std::string>().value(), std::move(it[1])});
+                string_t name = alloc_string(it[0].value.string);
+                value.object->push_back({name, std::move(it[1])});
             }
         } else {
             type = value_t::array;
@@ -293,10 +374,12 @@ public:
         return json(std::move(o));
     }
 
+/*
     template <typename ...Args>
     static json object(Args&& ...args) {
         return json(object_t{std::forward<Args>(args)...});
     }
+*/
 
     static json array() {
         return json(value_t::array);
@@ -324,7 +407,7 @@ public:
                 value.array = new array_t(*other.value.array);
                 break;
             case value_t::string:
-                value.string = new string_t(*other.value.string);
+                value.string = alloc_string(other.value.string);
                 break;
             case value_t::int_num:
                 value.int_num = other.value.int_num;
@@ -356,7 +439,7 @@ public:
                     value.array = new array_t(*other.value.array);
                     break;
                 case value_t::string:
-                    value.string = new string_t(*other.value.string);
+                    value.string = alloc_string(other.value.string);
                     break;
                 case value_t::int_num:
                     value.int_num = other.value.int_num;
@@ -401,14 +484,14 @@ public:
     inline size_t empty() const {
         if (is_object()) return value.object->empty();
         if (is_array()) return value.array->empty();
-        if (is_string()) return value.string->empty();
+        if (is_string()) return value.string.size == 0;
         std::abort();
     }
 
     inline size_t size() const {
         if (is_object()) return value.object->size();
         if (is_array()) return value.array->size();
-        if (is_string()) return value.string->size();
+        if (is_string()) return value.string.size;
         std::abort();
     }
 
@@ -429,17 +512,17 @@ public:
     result<T, json_error> get() &&;
 
     template <>
-    result<string_t, json_error> get<std::string>() const& {
+    result<std::string, json_error> get<std::string>() const& {
         if (is_string()) {
-            return *value.string;
+            return std::string(value.string.data, value.string.size);
         }
         return error(json_error::invalid_type);
     }
 
     template <>
-    result<string_t, json_error> get<std::string>() && {
+    result<std::string, json_error> get<std::string>() && {
         if (is_string()) {
-            return std::move(*value.string);
+            return std::string(value.string.data, value.string.size);
         }
         return error(json_error::invalid_type);
     }
@@ -663,8 +746,8 @@ public:
     static std::ostream& pretty_print(std::ostream& os, const json& j, size_t& indent) {
         auto write_string = [&os](const string_t& str) -> std::ostream& {
             os.put('"');
-            for (size_t i = 0; i < str.size(); i++) {
-                unsigned char c = str[i];
+            for (size_t i = 0; i < str.size; i++) {
+                unsigned char c = str.data[i];
                 if (c <= 0x1F || c == '"' || c == '\\') {
                     switch (c) {
                         case '"':
@@ -685,7 +768,7 @@ public:
                             break;
                     }
                 } else {
-                    os.put(str[i]);
+                    os.put(str.data[i]);
                 }
             }
             os.put('"');
@@ -739,7 +822,7 @@ public:
                 break;
             }
             case value_t::string:
-                write_string(*j.value.string);
+                write_string(j.value.string);
                 break;
             case value_t::int_num:
                 os << j.value.int_num;
@@ -809,7 +892,8 @@ public:
             }
         }
 
-        value.object->push_back({k, json()});
+        string_t name = alloc_string(k);
+        value.object->push_back({name, json()});
         return value.object->back().second;
     }
 
@@ -825,18 +909,8 @@ public:
             }
         }
 
-        value.object->push_back({k, json()});
-        return value.object->back().second;
-    }
-
-    const json& operator[](const std::string& k) const {
-        for (auto& [name, value] : *value.object) {
-            if (name == k) {
-                return value;
-            }
-        }
-
-        value.object->push_back({k, json()});
+        string_t name = alloc_string(k);
+        value.object->push_back({name, json()});
         return value.object->back().second;
     }
 
@@ -1147,7 +1221,7 @@ public:
         // and a count of the number of elements parsed so far.
         std::stack<std::pair<json*, size_t>> structures;
         // Holds Name-Value pairs for objects being constructed
-        std::deque<std::pair<std::string, json>> object_parts;
+        std::deque<std::pair<string_t, json>> object_parts;
         // Holds values for arrays being constructed
         std::deque<json> array_parts;
 
@@ -1349,11 +1423,21 @@ public:
 
     // Only called by parse_string when escape characters are found
     static parsed_string parse_string_slow(const char* str_start, const char* str_end) {
-        string_t ret;
+        string_t ret{};
         // Reserve enough space for the output.
         // At worst this is 6x larger than it needs to be because the entire string could be
         // 6 char length hex codes which map to 1 byte utf-8 codepoints (\u0041 == 'A')
-        ret.reserve(str_end - str_start);
+        ret.data = static_cast<char*>(malloc((str_end - str_start) * sizeof(char)));
+
+        auto append = [&ret](const char* str, size_t count) {
+            memcpy(ret.data + ret.size, str, count);
+            ret.size += count;
+        };
+
+        auto append_char = [&ret](char c) {
+            ret.data[ret.size] = c;
+            ret.size++;
+        };
 
         const char* start = str_start;
         const char* curr = str_start;
@@ -1377,28 +1461,28 @@ public:
 
         while (curr != str_end) {
             if (*curr == '\\') {
-                ret.append(start, curr - start);
+                append(start, curr - start);
                 curr++;
                 switch (*curr) {
                     case '"':
                     case '\\':
                     case '/':
-                        ret.append(1, *curr);
+                        append_char(*curr);
                         break;
                     case 'b':
-                        ret.append(1, '\b');
+                        append_char('\b');
                         break;
                     case 'f':
-                        ret.append(1, '\f');
+                        append_char('\f');
                         break;
                     case 'n':
-                        ret.append(1, '\n');
+                        append_char('\n');
                         break;
                     case 'r':
-                        ret.append(1, '\r');
+                        append_char('\r');
                         break;
                     case 't':
-                        ret.append(1, '\t');
+                        append_char('\t');
                         break;
                     case 'u': {
                         if (curr + 4 >= str_end) {
@@ -1412,25 +1496,25 @@ public:
                         uint16_t codeunit = maybe_codeunit.value();
                         if (codeunit <= 0x7F) {
                             // 0xxxxxxx
-                            ret.append(1, static_cast<char>(codeunit));
+                            append_char(static_cast<char>(codeunit));
                         } else if (codeunit >= 0x80 && codeunit <= 0x7FF) {
                             // 110xxxxx	10xxxxxx
                             char bytes[2];
                             bytes[0] = 0xC0 | (codeunit >> 6);
                             bytes[1] = 0x80 | (codeunit & 0x3F);
-                            ret.append(bytes, 2);
+                            append(bytes, 2);
                         } else if ((codeunit >= 0x800 && codeunit <= 0xD7FF) || (codeunit >= 0xE000 && codeunit <= 0xFFFF)) {
                             // 1110xxxx	10xxxxxx 10xxxxxx
                             char bytes[3];
                             bytes[0] = 0xE0 | (codeunit >> 12);
                             bytes[1] = 0x80 | ((codeunit >> 6) & 0x3F);
                             bytes[2] = 0x80 | (codeunit & 0x3F);
-                            ret.append(bytes, 3);
+                            append(bytes, 3);
                         } else if (codeunit >= 0xD800 && codeunit <= 0xDFFF) {
                             // We just parsed part one of 2 surrogates.
                             // If this surrogate is alone, replace it with the replacement char �
                             if (curr + 5 >= str_end || curr[1] != '\\' || curr[2] != 'u') {
-                                ret.append(u8"�");
+                                append(u8"�", 3);
                                 break;
                             }  
                             curr += 2;
@@ -1442,7 +1526,7 @@ public:
                             uint16_t codeunit_2 = maybe_surrogate.value();
                             uint32_t codepoint = static_cast<uint32_t>(((codeunit - 0xD800) * 0x400) + (codeunit_2 - 0xDC00) + 0x10000);
                             if (codepoint < 0x10000 || codepoint > 0x10FFFF) {
-                                ret.append(u8"�");
+                                append(u8"�", 3);
                                 break;
                             }
                             // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
@@ -1451,7 +1535,7 @@ public:
                             bytes[1] = 0x80 | ((codepoint >> 12) & 0x3F);
                             bytes[2] = 0x80 | ((codepoint >> 6) & 0x3F);
                             bytes[3] = 0x80 | (codepoint & 0x3F);
-                            ret.append(bytes, 4);
+                            append(bytes, 4);
                         }
                         break;
                     }
@@ -1469,7 +1553,7 @@ public:
             else if ((byte_0 & 0xF0) == 0xE0) curr += 3;
             else if ((byte_0 & 0xF8) == 0xF0) curr += 4;
         }
-        ret.append(start, curr - start);
+        append(start, curr - start);
         return ret;
     }
 
@@ -1511,7 +1595,7 @@ public:
 
             if (!take_slow_path) {
                 assert(**c == '"');
-                return string_t(str_start, static_cast<size_t>(*c - str_start));
+                return alloc_string(str_start, static_cast<size_t>(*c - str_start));
             }
 
             // We may not be at the end of the string yet as it may simply have been escaped

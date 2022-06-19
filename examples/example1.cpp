@@ -161,10 +161,12 @@ int main(int argc, const char** argv) {
         std::cout << j << "\n";
     }
 
+/*
     {
         json j = json::object(std::pair{"key", 123});
         std::cout << j << "\n";
     }
+*/
 
     {
         json j("hello");
