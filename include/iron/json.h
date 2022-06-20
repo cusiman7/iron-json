@@ -169,14 +169,72 @@ public:
     }
 };
 
+struct allocator {
+    virtual ~allocator() = default;
+    virtual void* alloc(size_t size) = 0;
+    virtual void free(void* p) = 0;
+};
+
+struct arena_allocator final : public allocator {
+    arena_allocator() {
+        head_ = alloc_block(4096, nullptr);
+    }
+
+    ~arena_allocator() {
+        while (head_) {
+            std::cout << "free head_: " << head_ << "\n";
+            void* to_free = head_;
+            head_ = head_->prev;
+            free(to_free);
+            std::cout << "freed\n";
+        }
+    }
+
+    void* alloc(size_t size) final {
+        if (head_->used + size > head_->size) {
+            head_ = alloc_block(head_->size * 2, head_);
+        }
+        //std::cout << "size: " << size << " head_->size: " << head_->size << " head_->used " << head_->used << "\n";
+        assert(size <= head_->size - head_->used);
+        void* p = reinterpret_cast<char*>(head_->data) + head_->used;
+        head_->used += size;
+        return p;
+    }
+
+    void free(void* p) final {}
+
+private:
+    struct block {
+        void* data;
+        size_t size;
+        size_t used;
+        block* prev;
+    };
+    block* head_ = nullptr;
+
+    block* alloc_block(size_t size, block* prev) {
+        //std::cout << "new block: " << size << "\n";
+        void* mem = malloc(size);
+        block* b = static_cast<struct block*>(mem);
+        b->data = mem;
+        b->size = size;
+        b->used = sizeof(struct block);
+        b->prev = prev;
+        return b;
+    }
+};
+
 enum class json_error: uint8_t {
     invalid_type,
 };
 
 enum class value_t: uint8_t {
     object,
+    owned_object,
     array,
+    owned_array,
     string,
+    owned_string,
     int_num,
     uint_num,
     float_num,
@@ -236,9 +294,40 @@ struct string {
 };
 
 class json;
+class json_doc;
 using string_t = string;
 using array_t = std::vector<json>;
 using object_t = std::vector<std::pair<string_t, json>>;
+
+class json_doc {
+public:
+    json_doc() = default; 
+    json_doc(arena_allocator* allocator, json* root) : allocator_(allocator), root_(root) {}
+    json_doc(const json_doc&) = delete;
+    json_doc& operator=(const json_doc&) = delete;
+    json_doc(json_doc&& other) : json_doc() {
+        swap(*this, other);
+    }
+    json_doc& operator=(json_doc&& other) {
+        if (this != &other) {
+            swap(*this, other);
+        }
+        return *this;
+    }
+    ~json_doc() { delete allocator_; }
+
+    friend void swap(json_doc& a, json_doc& b) {
+        std::swap(a.allocator_, b.allocator_);
+        std::swap(a.root_, b.root_);
+    }
+
+    arena_allocator* allocator() const { return allocator_; }
+    const json& root() const { return *root_; }
+    
+private:
+    arena_allocator* allocator_ = nullptr;
+    json* root_ = nullptr;
+};
 
 class json {
     value_t type;
@@ -254,13 +343,13 @@ class json {
 
     inline void destroy() {
         switch (type) {
-            case value_t::object:
+            case value_t::owned_object:
                 delete value.object;
                 break;
-            case value_t::array:
+            case value_t::owned_array:
                 delete value.array;
                 break;
-            case value_t::string:
+            case value_t::owned_string:
                 free(value.string.data);
                 break;
             default:
@@ -296,37 +385,9 @@ class json {
 
 public:
     json() : type(value_t::null), value{.object = nullptr} {}
-    json(value_t t) : type(t), value{.object = nullptr} {
-        switch (type) {
-            case value_t::object:
-                value.object = new object_t();
-                return;
-            case value_t::array:
-                value.array = new array_t();
-                return;
-            case value_t::string:
-                value.string = {nullptr, 0};
-                return;
-            case value_t::int_num:
-                value.int_num = 0;
-                return;
-            case value_t::uint_num:
-                value.uint_num = 0;
-                return;
-            case value_t::float_num:
-                value.float_num = 0;
-                return;
-            case value_t::boolean:
-                value.boolean = false;
-                return;
-            case value_t::null:
-                value.object = nullptr;
-                return;
-        }
-    }
     json(nullptr_t null) : type(value_t::null), value{.object = nullptr} {}
-    json(const char* str) : type(value_t::string), value{.string = alloc_string(str)} {}
-    json(const std::string& str) : type(value_t::string), value{.string = alloc_string(str)} {}
+    json(const char* str) : type(value_t::owned_string), value{.string = alloc_string(str)} {}
+    json(const std::string& str) : type(value_t::owned_string), value{.string = alloc_string(str)} {}
 private:
     json(const string& str) : type(value_t::string), value{.string = str} {}
 public:
@@ -335,10 +396,10 @@ public:
     json(uint64_t num) : type(value_t::uint_num), value{.uint_num = num} {}
     json(double num) : type(value_t::float_num), value{.float_num = num} {}
     json(bool b) : type(value_t::boolean), value{.boolean = b} {}
-    json(const object_t& o) : type(value_t::object), value{.object = new object_t(o)} {}
-    json(object_t&& o) : type(value_t::object), value{.object = new object_t(std::move(o))} {}
-    json(const array_t& a) : type(value_t::array), value{.array = new array_t(a)} {}
-    json(array_t&& a) : type(value_t::array), value{.array = new array_t(std::move(a))} {}
+    json(const object_t& o) : type(value_t::owned_object), value{.object = new object_t(o)} {}
+    json(object_t&& o) : type(value_t::owned_object), value{.object = new object_t(std::move(o))} {}
+    json(const array_t& a) : type(value_t::owned_array), value{.array = new array_t(a)} {}
+    json(array_t&& a) : type(value_t::owned_array), value{.array = new array_t(std::move(a))} {}
 
     json(std::initializer_list<json> init) : value{.object=nullptr} {
         bool looks_like_object = true;
@@ -349,7 +410,7 @@ public:
             }
         }
         if (looks_like_object) {
-            type = value_t::object;
+            type = value_t::owned_object;
             value.object = new object_t();
             value.object->reserve(init.size());
             for (auto& it : init) {
@@ -357,13 +418,13 @@ public:
                 value.object->push_back({name, std::move(it[1])});
             }
         } else {
-            type = value_t::array;
+            type = value_t::owned_array;
             value.array = new array_t(init.begin(), init.end());
         }
     }
 
     static json object() {
-        return json(value_t::object);
+        return json(object_t{});
     }
 
     static json object(const object_t& o) {
@@ -382,7 +443,7 @@ public:
 */
 
     static json array() {
-        return json(value_t::array);
+        return json(array_t{});
     }
 
     static json array(const array_t& a) {
@@ -401,12 +462,15 @@ public:
     json(const json& other) : type(other.type) {
         switch (type) {
             case value_t::object:
+            case value_t::owned_object:
                 value.object = new object_t(*other.value.object);
                 break;
             case value_t::array:
+            case value_t::owned_array:
                 value.array = new array_t(*other.value.array);
                 break;
             case value_t::string:
+            case value_t::owned_string:
                 value.string = alloc_string(other.value.string);
                 break;
             case value_t::int_num:
@@ -433,12 +497,15 @@ public:
             type = other.type;
             switch (type) {
                 case value_t::object:
+                case value_t::owned_object:
                     value.object = new object_t(*other.value.object);
                     break;
                 case value_t::array:
+                case value_t::owned_array:
                     value.array = new array_t(*other.value.array);
                     break;
                 case value_t::string:
+                case value_t::owned_string:
                     value.string = alloc_string(other.value.string);
                     break;
                 case value_t::int_num:
@@ -495,9 +562,9 @@ public:
         std::abort();
     }
 
-    inline bool is_object() const { return type == value_t::object; }
-    inline bool is_array() const { return type == value_t::array; }
-    inline bool is_string() const { return type == value_t::string; }
+    inline bool is_object() const { return type == value_t::object || type == value_t::owned_object; }
+    inline bool is_array() const { return type == value_t::array || type == value_t::owned_array; }
+    inline bool is_string() const { return type == value_t::string || type == value_t::owned_string; }
     inline bool is_number() const { return type == value_t::int_num || type == value_t::uint_num || type == value_t::float_num; }
     inline bool is_int() const { return type == value_t::int_num; }
     inline bool is_uint() const { return type == value_t::uint_num; }
@@ -506,13 +573,10 @@ public:
     inline bool is_null() const { return type == value_t::null; }
 
     template <typename T>
-    result<T, json_error> get() const&;
-
-    template <typename T>
-    result<T, json_error> get() &&;
+    result<T, json_error> get() const;
 
     template <>
-    result<std::string, json_error> get<std::string>() const& {
+    result<std::string, json_error> get<std::string>() const {
         if (is_string()) {
             return std::string(value.string.data, value.string.size);
         }
@@ -520,15 +584,7 @@ public:
     }
 
     template <>
-    result<std::string, json_error> get<std::string>() && {
-        if (is_string()) {
-            return std::string(value.string.data, value.string.size);
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<bool, json_error> get<bool>() const& {
+    result<bool, json_error> get<bool>() const {
         if (is_boolean()) {
             return bool(value.boolean);
         }
@@ -536,15 +592,7 @@ public:
     }
 
     template <>
-    result<bool, json_error> get<bool>() && {
-        if (is_boolean()) {
-            return bool(value.boolean);
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<int8_t, json_error> get<int8_t>() const& {
+    result<int8_t, json_error> get<int8_t>() const {
         if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
             return value.int_num;
         } else if (type == value_t::uint_num && under_max<int8_t>(value.uint_num)) {
@@ -554,17 +602,7 @@ public:
     }
 
     template <>
-    result<int8_t, json_error> get<int8_t>() && {
-        if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
-            return value.int_num;
-        } else if (type == value_t::uint_num && under_max<int8_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<int16_t, json_error> get<int16_t>() const& {
+    result<int16_t, json_error> get<int16_t>() const {
         if (type == value_t::int_num && within_limits<int16_t>(value.int_num)) {
             return value.int_num;
         } else if (type == value_t::uint_num && under_max<int16_t>(value.uint_num)) {
@@ -574,17 +612,7 @@ public:
     }
 
     template <>
-    result<int16_t, json_error> get<int16_t>() && {
-        if (type == value_t::int_num && within_limits<int16_t>(value.int_num)) {
-            return value.int_num;
-        } else if (type == value_t::uint_num && under_max<int16_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<int32_t, json_error> get<int32_t>() const& {
+    result<int32_t, json_error> get<int32_t>() const {
         if (type == value_t::int_num && within_limits<int32_t>(value.int_num)) {
             return value.int_num;
         } else if (type == value_t::uint_num && under_max<int32_t>(value.uint_num)) {
@@ -594,17 +622,7 @@ public:
     }
 
     template <>
-    result<int32_t, json_error> get<int32_t>() && {
-        if (type == value_t::int_num && within_limits<int32_t>(value.int_num)) {
-            return value.int_num;
-        } else if (type == value_t::uint_num && under_max<int32_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<int64_t, json_error> get<int64_t>() const& {
+    result<int64_t, json_error> get<int64_t>() const {
         if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
             return value.int_num;
         } else if (type == value_t::uint_num && under_max<int64_t>(value.uint_num)) {
@@ -614,17 +632,7 @@ public:
     }
 
     template <>
-    result<int64_t, json_error> get<int64_t>() && {
-        if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
-            return value.int_num;
-        } else if (type == value_t::uint_num && under_max<int64_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<uint8_t, json_error> get<uint8_t>() const& {
+    result<uint8_t, json_error> get<uint8_t>() const {
         if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
             return value.uint_num;
         }
@@ -632,15 +640,7 @@ public:
     }
 
     template <>
-    result<uint8_t, json_error> get<uint8_t>() && {
-        if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<uint16_t, json_error> get<uint16_t>() const& {
+    result<uint16_t, json_error> get<uint16_t>() const {
         if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
             return value.uint_num;
         }
@@ -648,15 +648,7 @@ public:
     }
 
     template <>
-    result<uint16_t, json_error> get<uint16_t>() && {
-        if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<uint32_t, json_error> get<uint32_t>() const& {
+    result<uint32_t, json_error> get<uint32_t>() const {
         if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
             return value.uint_num;
         }
@@ -664,15 +656,7 @@ public:
     }
 
     template <>
-    result<uint32_t, json_error> get<uint32_t>() && {
-        if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<uint64_t, json_error> get<uint64_t>() const& {
+    result<uint64_t, json_error> get<uint64_t>() const {
         if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
             return value.uint_num;
         }
@@ -680,15 +664,7 @@ public:
     }
 
     template <>
-    result<uint64_t, json_error> get<uint64_t>() && {
-        if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error(json_error::invalid_type);
-    }
-
-    template <>
-    result<float, json_error> get<float>() const& {
+    result<float, json_error> get<float>() const {
         switch (type) {
             case value_t::float_num:
                 return value.float_num;
@@ -702,35 +678,7 @@ public:
     }
 
     template <>
-    result<float, json_error> get<float>() && {
-        switch (type) {
-            case value_t::float_num:
-                return value.float_num;
-            case value_t::int_num:
-                return value.int_num;
-            case value_t::uint_num:
-                return value.uint_num;
-            default:
-                return error(json_error::invalid_type);
-        }
-    }
-
-    template <>
-    result<double, json_error> get<double>() const& {
-        switch (type) {
-            case value_t::float_num:
-                return value.float_num;
-            case value_t::int_num:
-                return value.int_num;
-            case value_t::uint_num:
-                return value.uint_num;
-            default:
-                return error(json_error::invalid_type);
-        }
-    }
-
-    template <>
-    result<double, json_error> get<double>() && {
+    result<double, json_error> get<double>() const {
         switch (type) {
             case value_t::float_num:
                 return value.float_num;
@@ -775,7 +723,8 @@ public:
             return os;
         };
         switch (j.type) {
-            case value_t::object: {
+            case value_t::object:
+            case value_t::owned_object: {
                 if (j.value.object->empty()) {
                     os << "{}";
                     break;
@@ -801,7 +750,8 @@ public:
                 os << "}";
                 break;
             }
-            case value_t::array: {
+            case value_t::array:
+            case value_t::owned_array: {
                 if (j.value.array->empty()) {
                     os << "[]";
                     break;
@@ -822,6 +772,7 @@ public:
                 break;
             }
             case value_t::string:
+            case value_t::owned_string:
                 write_string(j.value.string);
                 break;
             case value_t::int_num:
@@ -852,7 +803,7 @@ public:
 
     void push_back(const json& j) {
         if (is_null()) {
-            type = value_t::array;
+            type = value_t::owned_array;
             value.array = new array_t(1);
         }
         value.array->push_back(j);
@@ -860,7 +811,7 @@ public:
 
     void push_back(json&& j) {
         if (is_null()) {
-            type = value_t::array;
+            type = value_t::owned_array;
             value.array = new array_t(1);
         }
         value.array->push_back(std::move(j));
@@ -868,7 +819,7 @@ public:
 
     json& operator[](int i) {
         if (is_null()) {
-            type = value_t::array;
+            type = value_t::owned_array;
             value.array = new array_t(1);
         }
         return (*value.array)[i];
@@ -882,7 +833,7 @@ public:
 
     json& operator[](const char* k) {
         if (is_null()) {
-            type = value_t::object;
+            type = value_t::owned_object;
             value.object = new object_t(1);
         }
 
@@ -899,7 +850,7 @@ public:
 
     json& operator[](const std::string& k) {
         if (is_null()) {
-            type = value_t::object;
+            type = value_t::owned_object;
             value.object = new object_t(1);
         }
 
@@ -933,15 +884,12 @@ public:
         reference_type operator*() {
             switch (type) {
                 case value_t::object:
+                case value_t::owned_object:
                     return object_it->second;
                 case value_t::array:
+                case value_t::owned_array:
                     return *array_it;
-                case value_t::string:
-                case value_t::int_num:
-                case value_t::uint_num:
-                case value_t::float_num:
-                case value_t::boolean:
-                case value_t::null:
+                default:
                     std::abort();
             }
         }
@@ -949,49 +897,46 @@ public:
         reference_type operator->() {
             switch (type) {
                 case value_t::object:
+                case value_t::owned_object:
                     return object_it->second;
                 case value_t::array:
+                case value_t::owned_array:
                     return *array_it;
-                case value_t::string:
-                case value_t::int_num:
-                case value_t::uint_num:
-                case value_t::float_num:
-                case value_t::boolean:
-                case value_t::null:
+                default:
                     std::abort();
             }
         }
 
         const string_t& name() {
-            if (type == value_t::object) {
+            if (type == value_t::object || type == value_t::owned_object) {
                 return object_it->first;
             }
             std::abort();
         }
 
         const string_t& key() {
-            if (type == value_t::object) {
+            if (type == value_t::object || type == value_t::owned_object) {
                 return object_it->first;
             }
             std::abort();
         }
 
         const string_t& first() {
-            if (type == value_t::object) {
+            if (type == value_t::object || type == value_t::owned_object) {
                 return object_it->first;
             }
             std::abort();
         }
 
         reference_type value() {
-            if (type == value_t::object) {
+            if (type == value_t::object || type == value_t::owned_object) {
                 return object_it->second;
             }
             std::abort();
         }
 
         reference_type second() {
-            if (type == value_t::object) {
+            if (type == value_t::object || type == value_t::owned_object) {
                 return object_it->second;
             }
             std::abort();
@@ -1000,17 +945,14 @@ public:
         basic_iterator& operator++() {
             switch (type) {
                 case value_t::object:
+                case value_t::owned_object:
                     ++object_it;
                     break;
                 case value_t::array:
+                case value_t::owned_array:
                     ++array_it;
                     break;
-                case value_t::string:
-                case value_t::int_num:
-                case value_t::uint_num:
-                case value_t::float_num:
-                case value_t::boolean:
-                case value_t::null:
+                default:
                     std::abort();
             }
             return *this;
@@ -1019,17 +961,14 @@ public:
         basic_iterator& operator++(int) {
             switch (type) {
                 case value_t::object:
+                case value_t::owned_object:
                     object_it++;
                     break;
                 case value_t::array:
+                case value_t::owned_array:
                     array_it++;
                     break;
-                case value_t::string:
-                case value_t::int_num:
-                case value_t::uint_num:
-                case value_t::float_num:
-                case value_t::boolean:
-                case value_t::null:
+                default:
                     std::abort();
             }
             return *this;
@@ -1039,15 +978,12 @@ public:
             if (type == other.type) {
                 switch (type) {
                     case value_t::object:
+                    case value_t::owned_object:
                         return object_it == other.object_it;
                     case value_t::array:
+                    case value_t::owned_array:
                         return array_it == other.array_it;
-                    case value_t::string:
-                    case value_t::int_num:
-                    case value_t::uint_num:
-                    case value_t::float_num:
-                    case value_t::boolean:
-                    case value_t::null:
+                    default:
                         return true;
                 }
             }
@@ -1063,19 +999,15 @@ public:
     using const_iterator = basic_iterator<const json, object_t::const_iterator, array_t::const_iterator>;
 
     iterator begin() {
-        switch (type) {
-            case value_t::object: return iterator(*this, value.object->begin());
-            case value_t::array: return iterator(*this, value.array->begin());
-            default: return iterator();
-        }
+        if (is_object()) return iterator(*this, value.object->begin());
+        else if (is_array()) return iterator(*this, value.array->begin());
+        else return iterator();
     }
 
     iterator end() {
-        switch (type) {
-            case value_t::object: return iterator(*this, value.object->end());
-            case value_t::array: return iterator(*this, value.array->end());
-            default: return iterator();
-        }
+        if (is_object()) return iterator(*this, value.object->end());
+        else if (is_array()) return iterator(*this, value.array->end());
+        else return iterator();
     }
 
     const_iterator begin() const {
@@ -1087,19 +1019,15 @@ public:
     }
 
     const_iterator cbegin() const {
-        switch (type) {
-            case value_t::object: return const_iterator(*this, value.object->cbegin());
-            case value_t::array: return const_iterator(*this, value.array->cbegin());
-            default: return const_iterator();
-        }
+        if (is_object()) return const_iterator(*this, value.object->cbegin());
+        else if (is_array()) return const_iterator(*this, value.array->cbegin());
+        else return const_iterator();
     }
 
     const_iterator cend() const {
-        switch (type) {
-            case value_t::object: return const_iterator(*this, value.object->cend());
-            case value_t::array: return const_iterator(*this, value.array->cend());
-            default: return const_iterator();
-        }
+        if (is_object()) return const_iterator(*this, value.object->cend());
+        else if (is_array()) return const_iterator(*this, value.array->cend());
+        else return const_iterator();
     }
 
     struct items_proxy {
@@ -1114,13 +1042,14 @@ public:
     };
 
     items_proxy items() {
-        if (type == value_t::object) {
+        if (is_object()) {
             return {*value.object};
         }
         std::abort();
     }
 
     static result<json, const char*> parse(const std::string& s) {
+        json_doc doc(new arena_allocator(), new json());
         const char* c = s.data();
         const char* cend = c + s.size();
 
@@ -1137,7 +1066,7 @@ public:
                     c = skip_whitespace(c + 1, cend);
                     return json::array();
                 case '"': { // Begin String
-                    auto ps = parse_string(&c, cend);
+                    auto ps = parse_string(&c, cend, doc.allocator());
                     if (!ps) {
                         return error(ps.error());
                     }
@@ -1371,7 +1300,7 @@ public:
                 // { "name": value, "name2": value2, ... }
                 //   ^
                 string_t key;
-                auto ps = parse_string(&c, cend);
+                auto ps = parse_string(&c, cend, doc.allocator());
                 if (!ps) {
                     return error(ps.error());
                 }
@@ -1422,12 +1351,12 @@ public:
     using parsed_string = result<string_t, const char*>;
 
     // Only called by parse_string when escape characters are found
-    static parsed_string parse_string_slow(const char* str_start, const char* str_end) {
+    static parsed_string parse_string_slow(const char* str_start, const char* str_end, arena_allocator* arena) {
         string_t ret{};
         // Reserve enough space for the output.
         // At worst this is 6x larger than it needs to be because the entire string could be
         // 6 char length hex codes which map to 1 byte utf-8 codepoints (\u0041 == 'A')
-        ret.data = static_cast<char*>(malloc((str_end - str_start) * sizeof(char)));
+        ret.data = static_cast<char*>(arena->alloc((str_end - str_start) * sizeof(char)));
 
         auto append = [&ret](const char* str, size_t count) {
             memcpy(ret.data + ret.size, str, count);
@@ -1564,7 +1493,7 @@ public:
      * If any escape characters were identified during validation and length checking
      * a second pass is performed to decode the string.
      */
-    static parsed_string parse_string(const char** c, const char* cend) {
+    static parsed_string parse_string(const char** c, const char* cend, arena_allocator* arena) {
         assert(**c == '"');
         (*c)++;
         const char* str_start = *c;
@@ -1595,7 +1524,10 @@ public:
 
             if (!take_slow_path) {
                 assert(**c == '"');
-                return alloc_string(str_start, static_cast<size_t>(*c - str_start));
+                size_t size = static_cast<size_t>(*c - str_start);
+                void* mem = arena->alloc(size);
+                memcpy(mem, str_start, size);
+                return string_t{static_cast<char*>(mem), size};
             }
 
             // We may not be at the end of the string yet as it may simply have been escaped
@@ -1608,7 +1540,7 @@ public:
 
             if (!escaped) {
                 assert(**c == '"');
-                return parse_string_slow(str_start, *c);
+                return parse_string_slow(str_start, *c, arena);
             }
             // Found an escaped quote, continue looking for end of string
             (*c)++;
@@ -2035,7 +1967,7 @@ public:
         }
         return c;
     }
-};
+}; // class json
 
 } // namespace fe
 
