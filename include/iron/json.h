@@ -182,11 +182,9 @@ struct arena_allocator final : public allocator {
 
     ~arena_allocator() {
         while (head_) {
-            std::cout << "free head_: " << head_ << "\n";
             void* to_free = head_;
             head_ = head_->prev;
-            free(to_free);
-            std::cout << "freed\n";
+            ::free(to_free);
         }
     }
 
@@ -222,24 +220,6 @@ private:
         b->prev = prev;
         return b;
     }
-};
-
-enum class json_error: uint8_t {
-    invalid_type,
-};
-
-enum class value_t: uint8_t {
-    object,
-    owned_object,
-    array,
-    owned_array,
-    string,
-    owned_string,
-    int_num,
-    uint_num,
-    float_num,
-    boolean,
-    null,
 };
 
 // For now, we leak strings
@@ -293,6 +273,24 @@ struct string {
     }
 };
 
+enum class json_error: uint8_t {
+    invalid_type,
+};
+
+enum class value_t: uint8_t {
+    object,
+    owned_object,
+    array,
+    owned_array,
+    string,
+    owned_string,
+    int_num,
+    uint_num,
+    float_num,
+    boolean,
+    null,
+};
+
 class json;
 class json_doc;
 using string_t = string;
@@ -301,12 +299,14 @@ using object_t = std::vector<std::pair<string_t, json>>;
 
 class json_doc {
 public:
-    json_doc() = default; 
-    json_doc(arena_allocator* allocator, json* root) : allocator_(allocator), root_(root) {}
+    json_doc() : allocator_(new arena_allocator()) {} 
     json_doc(const json_doc&) = delete;
     json_doc& operator=(const json_doc&) = delete;
-    json_doc(json_doc&& other) : json_doc() {
-        swap(*this, other);
+    json_doc(json_doc&& other) {
+        allocator_ = other.allocator_;
+        other.allocator_ = nullptr;
+        root_ = other.root_;
+        other.root_ = nullptr;
     }
     json_doc& operator=(json_doc&& other) {
         if (this != &other) {
@@ -314,8 +314,7 @@ public:
         }
         return *this;
     }
-    ~json_doc() { delete allocator_; }
-
+    ~json_doc();
     friend void swap(json_doc& a, json_doc& b) {
         std::swap(a.allocator_, b.allocator_);
         std::swap(a.root_, b.root_);
@@ -323,6 +322,7 @@ public:
 
     arena_allocator* allocator() const { return allocator_; }
     const json& root() const { return *root_; }
+    json* assign_root(json&& j);
     
 private:
     arena_allocator* allocator_ = nullptr;
@@ -343,8 +343,14 @@ class json {
 
     inline void destroy() {
         switch (type) {
+            case value_t::object:
+                (*value.object).~object_t();
+                break;
             case value_t::owned_object:
                 delete value.object;
+                break;
+            case value_t::array:
+                (*value.array).~array_t();
                 break;
             case value_t::owned_array:
                 delete value.array;
@@ -404,7 +410,7 @@ public:
     json(std::initializer_list<json> init) : value{.object=nullptr} {
         bool looks_like_object = true;
         for (const auto& it : init) {
-            looks_like_object = it.is_array() && it.size() == 2 && it[0].is_string();
+            looks_like_object = it.is_array() && it.size() == 2 && it[0]->is_string();
             if (!looks_like_object) {
                 break;
             }
@@ -414,8 +420,8 @@ public:
             value.object = new object_t();
             value.object->reserve(init.size());
             for (auto& it : init) {
-                string_t name = alloc_string(it[0].value.string);
-                value.object->push_back({name, std::move(it[1])});
+                string_t name = alloc_string(it[0]->value.string);
+                value.object->push_back({name, std::move(*it[1])});
             }
         } else {
             type = value_t::owned_array;
@@ -463,14 +469,17 @@ public:
         switch (type) {
             case value_t::object:
             case value_t::owned_object:
+                type = value_t::owned_object;
                 value.object = new object_t(*other.value.object);
                 break;
             case value_t::array:
             case value_t::owned_array:
+                type = value_t::owned_array;
                 value.array = new array_t(*other.value.array);
                 break;
             case value_t::string:
             case value_t::owned_string:
+                type = value_t::owned_string;
                 value.string = alloc_string(other.value.string);
                 break;
             case value_t::int_num:
@@ -498,14 +507,17 @@ public:
             switch (type) {
                 case value_t::object:
                 case value_t::owned_object:
+                    type = value_t::owned_object;
                     value.object = new object_t(*other.value.object);
                     break;
                 case value_t::array:
                 case value_t::owned_array:
+                    type = value_t::owned_array;
                     value.array = new array_t(*other.value.array);
                     break;
                 case value_t::string:
                 case value_t::owned_string:
+                    type = value_t::owned_string;
                     value.string = alloc_string(other.value.string);
                     break;
                 case value_t::int_num:
@@ -817,21 +829,21 @@ public:
         value.array->push_back(std::move(j));
     }
 
-    json& operator[](int i) {
+    json* operator[](int i) {
         if (is_null()) {
             type = value_t::owned_array;
             value.array = new array_t(1);
         }
-        return (*value.array)[i];
+        return &(*value.array)[i];
     }
 
-    const json& operator[](int i) const {
-        return (*value.array)[i];
+    const json* operator[](int i) const {
+        return &(*value.array)[i];
     }
 
     // Object Operations
-
-    json& operator[](const char* k) {
+    
+    json* operator[](const char* k) {
         if (is_null()) {
             type = value_t::owned_object;
             value.object = new object_t(1);
@@ -839,16 +851,26 @@ public:
 
         for (auto& [name, value] : *value.object) {
             if (name == k) {
-                return value;
+                return &value;
             }
         }
 
         string_t name = alloc_string(k);
         value.object->push_back({name, json()});
-        return value.object->back().second;
+        return &value.object->back().second;
     }
 
-    json& operator[](const std::string& k) {
+
+    const json* operator[](const char* k) const {
+        for (const auto& [name, value] : *value.object) {
+            if (name == k) {
+                return &value;
+            }
+        }
+        return nullptr;
+    }
+
+    json* operator[](const std::string& k) {
         if (is_null()) {
             type = value_t::owned_object;
             value.object = new object_t(1);
@@ -856,13 +878,22 @@ public:
 
         for (auto& [name, value] : *value.object) {
             if (name == k) {
-                return value;
+                return &value;
             }
         }
 
         string_t name = alloc_string(k);
         value.object->push_back({name, json()});
-        return value.object->back().second;
+        return &value.object->back().second;
+    }
+    
+    const json* operator[](const std::string& k) const {
+        for (const auto& [name, value] : *value.object) {
+            if (name == k) {
+                return &value;
+            }
+        }
+        return nullptr;
     }
 
     template<typename ValueT, typename ObjectItT, typename ArrayItT>
@@ -1048,8 +1079,8 @@ public:
         std::abort();
     }
 
-    static result<json, const char*> parse(const std::string& s) {
-        json_doc doc(new arena_allocator(), new json());
+    static result<json_doc, const char*> parse(const std::string& s) {
+        json_doc doc;
         const char* c = s.data();
         const char* cend = c + s.size();
 
@@ -1154,24 +1185,24 @@ public:
         // Holds values for arrays being constructed
         std::deque<json> array_parts;
 
-        json root;
         // JSON docs can be single values all by themselves
         {
             result<json, const char*> value = parse_value();
             if (!value) {
-                return value;
+                return error(value.error());
             } else if (!(value.value().is_object() || value.value().is_array())) {
                 // Expect a single value document
                 c = skip_whitespace(c, cend);
                 if (c != cend) {
                     return error<const char*>("Unexpected character:");
                 }
-                return value;
+                doc.assign_root(std::move(value).value());
+                return doc;
             }
 
             // Array or Object
-            root = std::move(value).value();
-            structures.emplace(&root, 0);
+            json* root = doc.assign_root(std::move(value).value());
+            structures.emplace(root, 0);
         }
 
         auto end_array_or_object = [&structures, &object_parts, &array_parts]() {
@@ -1240,7 +1271,7 @@ public:
                         end_array_or_object();
                         continue;
                     }
-                    return value;
+                    return error(value.error());
                 } else if (value.value().is_object() || value.value().is_array()) {
                     // Structues will be: |new_struct*, 0   | <- top
                     //                    |array*,      n+1 |
@@ -1321,7 +1352,7 @@ public:
                 //           ^
                 result<json, const char*> value = parse_value();
                 if (!value) {
-                    return value;
+                    return error(value.error());
                 } else if (value.value().is_object() || value.value().is_array()) {
                     // Structues will be: |new_struct*, 0   | <- top
                     //                    |object*,     n+1 |
@@ -1343,7 +1374,7 @@ public:
             return error<const char*>("Unexpected character");
         }
 
-        return root;
+        return doc;
     }
 
 //private:
