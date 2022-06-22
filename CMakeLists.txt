@@ -31,6 +31,9 @@ add_executable(bench
 )
 target_link_libraries(bench ironjson)
 target_compile_options(bench PRIVATE -fno-omit-frame-pointer)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(bench PRIVATE -Wl,--no-as-needed -ldl)
+endif()
 
 configure_file(data/demo.json ${CMAKE_CURRENT_BINARY_DIR}/data/demo.json COPYONLY)
 configure_file(data/github_events.json ${CMAKE_CURRENT_BINARY_DIR}/data/github_events.json COPYONLY)
