@@ -22,7 +22,7 @@ bool within_limits(U n) {
 
 template <typename T, typename U>
 bool under_max(U n) {
-    static_assert(std::is_unsigned<U>::value);
+    static_assert(std::is_unsigned<U>::value, "Number must be unsigned to use under_max");
     return n <= std::numeric_limits<T>::max();
 }
 
@@ -752,7 +752,7 @@ public:
         if (is_string()) {
             return std::string(value.string.data, value.string.size);
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -760,7 +760,7 @@ public:
         if (is_boolean()) {
             return bool(value.boolean);
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -770,7 +770,7 @@ public:
         } else if (type == value_t::uint_num && under_max<int8_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -780,7 +780,7 @@ public:
         } else if (type == value_t::uint_num && under_max<int16_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -790,7 +790,7 @@ public:
         } else if (type == value_t::uint_num && under_max<int32_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -800,7 +800,7 @@ public:
         } else if (type == value_t::uint_num && under_max<int64_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -808,7 +808,7 @@ public:
         if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -816,7 +816,7 @@ public:
         if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -824,7 +824,7 @@ public:
         if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -832,7 +832,7 @@ public:
         if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
             return value.uint_num;
         }
-        return error(json_error::invalid_type);
+        return error<json_error>(json_error::invalid_type);
     }
 
     template <>
@@ -845,7 +845,7 @@ public:
             case value_t::uint_num:
                 return value.uint_num;
             default:
-                return error(json_error::invalid_type);
+                return error<json_error>(json_error::invalid_type);
         }
     }
 
@@ -859,7 +859,7 @@ public:
             case value_t::uint_num:
                 return value.uint_num;
             default:
-                return error(json_error::invalid_type);
+                return error<json_error>(json_error::invalid_type);
         }
     }
 
@@ -1019,9 +1019,9 @@ public:
             become_object();
         }
 
-        for (auto& [name, value] : *value.object) {
-            if (name == k) {
-                return value;
+        for (auto& it : *value.object) {
+            if (it.first == k) {
+                return it.second;
             }
         }
 
@@ -1043,9 +1043,9 @@ public:
             become_object();
         }
 
-        for (auto& [name, value] : *value.object) {
-            if (name == k) {
-                return value;
+        for (auto& it : *value.object) {
+            if (it.first == k) {
+                return it.second;
             }
         }
 
@@ -1265,7 +1265,7 @@ public:
                 case '"': { // Begin String
                     auto ps = parse_string(&c, cend, root.arena());
                     if (!ps) {
-                        return error(ps.error());
+                        return error<const char*>(ps.error());
                     }
                     assert(*c == '"');
                     c = skip_whitespace(c + 1, cend);
@@ -1333,7 +1333,7 @@ public:
                             c = skip_whitespace(c, cend);
                             return json(n.d);
                         case number_t::error:
-                            return error(n.what);
+                            return error<const char*>(n.what);
                     }
                     break;
                 }
@@ -1378,8 +1378,11 @@ public:
                 structures.pop();
                 return;
             }
-            auto [a_or_o, size] = structures.top();
+            auto a_or_o_size = structures.top();
             structures.pop();
+           
+            json* a_or_o = a_or_o_size.first;
+            size_t size = a_or_o_size.second;
 
             if (a_or_o->is_object()) {
                 auto& obj_vec = *a_or_o->value.object;
@@ -1437,7 +1440,7 @@ public:
                         end_array_or_object();
                         continue;
                     }
-                    return error(value.error());
+                    return error<const char*>(value.error());
                 } else if (value.value().is_object() || value.value().is_array()) {
                     // Structues will be: |new_struct*, 0   | <- top
                     //                    |array*,      n+1 |
@@ -1499,7 +1502,7 @@ public:
                 string_t key;
                 auto ps = parse_string(&c, cend, root.arena());
                 if (!ps) {
-                    return error(ps.error());
+                    return error<const char*>(ps.error());
                 }
                 assert(*c == '"');
                 c++;
@@ -1518,7 +1521,7 @@ public:
                 //           ^
                 result<json, const char*> value = parse_value();
                 if (!value) {
-                    return error(value.error());
+                    return error<const char*>(value.error());
                 } else if (value.value().is_object() || value.value().is_array()) {
                     // Structues will be: |new_struct*, 0   | <- top
                     //                    |object*,     n+1 |
@@ -1617,7 +1620,7 @@ public:
                         auto maybe_codeunit = parse_utf16_unit();
                         if (!maybe_codeunit) {
                             // We tried to parse \uXXXX but failed
-                            return error(maybe_codeunit.error());
+                            return error<const char*>(maybe_codeunit.error());
                         }
                         uint16_t codeunit = maybe_codeunit.value();
                         if (codeunit <= 0x7F) {
@@ -1647,7 +1650,7 @@ public:
                             auto maybe_surrogate = parse_utf16_unit();
                             if (!maybe_surrogate) {
                                 // We tried to parse \uXXXX but failed
-                                return error(maybe_surrogate.error());
+                                return error<const char*>(maybe_surrogate.error());
                             }
                             uint16_t codeunit_2 = maybe_surrogate.value();
                             uint32_t codepoint = static_cast<uint32_t>(((codeunit - 0xD800) * 0x400) + (codeunit_2 - 0xDC00) + 0x10000);

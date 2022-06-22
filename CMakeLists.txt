@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.19)
 project(ironjson)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 11)
 
 #add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
 #add_link_options(-fsanitize=address)
 
-add_library(ironjson INTERFACE)
+add_library(ironjson INTERFACE include/iron/json.h)
 target_include_directories(ironjson INTERFACE 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )

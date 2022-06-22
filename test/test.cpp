@@ -50,7 +50,9 @@ void register_test(const char* name, test_fn f, int line, const char* file) {
 }
 
 void set_check_vars(std::string&& a, std::string&& b, const char* comp) {
-    check_vars_ = {std::move(a), std::move(b), comp};
+    check_vars_.a = std::move(a);
+    check_vars_.b = std::move(b);
+    check_vars_.comp  = comp;
 }
 
 void on_check_failed(const char* expr, const char* file, int line) {
