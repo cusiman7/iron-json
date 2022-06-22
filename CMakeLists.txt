@@ -5,15 +5,12 @@ set(CMAKE_CXX_STANDARD 17)
 #add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
 #add_link_options(-fsanitize=address)
 
-add_library(ironjson STATIC include/iron/json.cpp)
+add_library(ironjson INTERFACE)
 target_include_directories(ironjson INTERFACE 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-add_executable(example1
-    examples/example1.cpp
-)
-target_link_libraries(example1 ironjson)
+add_subdirectory(examples)
 
 add_executable(test
     test/test.cpp

@@ -1,34 +1,11 @@
 
 #include <iron/json.h>
 #include <iostream>
-#include <fstream>
 #include <vector>
 
 using fe::json;
 
-std::string read_file(const char* path) {
-    if(std::ifstream is{path, std::ios::binary | std::ios::ate}) {
-        auto size = is.tellg();
-        std::string str(size, '\0'); // construct string to stream size
-        is.seekg(0);
-        if(is.read(&str[0], size)) {
-            return str;
-        }
-    }
-    return {};
-}
-
 int main(int argc, const char** argv) {
-    if (argc > 1) {
-        auto j = json::parse(read_file(argv[1]));
-        if (j) {
-            std::cout << j.value().root();
-        } else {
-            std::cout << j.error();
-        }
-        return 0;
-    }
-
     json null;
     for (auto& it : null) {
         std::cout << it << "\n";
@@ -71,7 +48,7 @@ int main(int argc, const char** argv) {
     }
 
     json j4;
-    *j4["key"] = "value";
+    j4["key"] = "value";
     std::cout << j4["key"] << "\n";
 
     for (const auto& v : j4) {
@@ -93,28 +70,28 @@ int main(int argc, const char** argv) {
 
     {
         // create an empty structure (null)
-        json j;
+        json j = json::doc();
 
         // add a number that is stored as double (note the implicit conversion of j to an object)
-        *j["pi"] = 3.141;
+        j["pi"] = 3.141;
 
         // add a Boolean that is stored as bool
-        *j["happy"] = true;
+        j["happy"] = true;
 
         // add a string that is stored as std::string
-        *j["name"] = "Niels";
+        j["name"] = "Niels";
 
         // add another null object by passing nullptr
-        *j["nothing"] = nullptr;
+        j["nothing"] = nullptr;
 
         // add an object inside the object
-        *(*j["answer"])["everything"] = 42;
+        j["answer"]["everything"] = 42;
 
         // add an array that is stored as std::vector (using an initializer list)
-        *j["list"] = { 1, 0, 2 };
+        j["list"] = { 1, 0, 2 };
 
         // add another object (using an initializer list of pairs)
-        *j["object"] = { {"currency", "USD"}, {"value", 42.99} };
+        j["object"] = { {"currency", "USD"}, {"value", 42.99} };
 
         std::cout << j << "\n";
     }

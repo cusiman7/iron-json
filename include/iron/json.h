@@ -1,17 +1,17 @@
 
 #pragma once
 
-#include <stdint.h>
-#include <unordered_map>
-#include <string>
-#include <vector>
+#include <deque>
 #include <initializer_list>
 #include <iostream>
 #include <stack>
-#include <deque>
-#include <string_view>
+#include <string>
+#include <vector>
+
+#include <stdint.h>
 #include <cassert>
 #include <cfloat>
+#include <cmath> // std::pow
 
 namespace fe {
 namespace {
@@ -169,13 +169,7 @@ public:
     }
 };
 
-struct allocator {
-    virtual ~allocator() = default;
-    virtual void* alloc(size_t size) = 0;
-    virtual void free(void* p) = 0;
-};
-
-struct arena_allocator final : public allocator {
+struct arena_allocator {
     arena_allocator() {
         head_ = alloc_block(4096, nullptr);
     }
@@ -187,19 +181,31 @@ struct arena_allocator final : public allocator {
             ::free(to_free);
         }
     }
-
-    void* alloc(size_t size) final {
-        if (head_->used + size > head_->size) {
-            head_ = alloc_block(head_->size * 2, head_);
-        }
-        //std::cout << "size: " << size << " head_->size: " << head_->size << " head_->used " << head_->used << "\n";
-        assert(size <= head_->size - head_->used);
-        void* p = reinterpret_cast<char*>(head_->data) + head_->used;
-        head_->used += size;
-        return p;
+    
+    void* alloc(size_t size) {
+        return alloc(size, alignof(max_align_t));
     }
 
-    void free(void* p) final {}
+    void* alloc(size_t size, size_t alignment) {
+        size_t alignment_offset = 0;
+        size_t pointer_loc = reinterpret_cast<size_t>(head_->data) + head_->used;
+        if (pointer_loc & (alignment - 1)) {
+            alignment_offset = alignment - (pointer_loc & (alignment - 1)); 
+        }
+
+        if (head_->used + size + alignment_offset > head_->size) {
+            size_t next_size = std::max(head_->size * 2, size + sizeof(block));
+            head_ = alloc_block(next_size, head_);
+            return alloc(size, alignment); 
+        }
+        
+        size += alignment_offset;
+        pointer_loc += alignment_offset;
+        assert(size <= head_->size - head_->used);
+
+        head_->used += size;
+        return reinterpret_cast<void*>(pointer_loc);
+    }
 
 private:
     struct block {
@@ -211,7 +217,6 @@ private:
     block* head_ = nullptr;
 
     block* alloc_block(size_t size, block* prev) {
-        //std::cout << "new block: " << size << "\n";
         void* mem = malloc(size);
         block* b = static_cast<struct block*>(mem);
         b->data = mem;
@@ -222,7 +227,6 @@ private:
     }
 };
 
-// For now, we leak strings
 struct string {
     char* data;
     size_t size;
@@ -292,45 +296,13 @@ enum class value_t: uint8_t {
 };
 
 class json;
-class json_doc;
 using string_t = string;
 using array_t = std::vector<json>;
 using object_t = std::vector<std::pair<string_t, json>>;
 
-class json_doc {
-public:
-    json_doc() : allocator_(new arena_allocator()) {} 
-    json_doc(const json_doc&) = delete;
-    json_doc& operator=(const json_doc&) = delete;
-    json_doc(json_doc&& other) {
-        allocator_ = other.allocator_;
-        other.allocator_ = nullptr;
-        root_ = other.root_;
-        other.root_ = nullptr;
-    }
-    json_doc& operator=(json_doc&& other) {
-        if (this != &other) {
-            swap(*this, other);
-        }
-        return *this;
-    }
-    ~json_doc();
-    friend void swap(json_doc& a, json_doc& b) {
-        std::swap(a.allocator_, b.allocator_);
-        std::swap(a.root_, b.root_);
-    }
-
-    arena_allocator* allocator() const { return allocator_; }
-    const json& root() const { return *root_; }
-    json* assign_root(json&& j);
-    
-private:
-    arena_allocator* allocator_ = nullptr;
-    json* root_ = nullptr;
-};
-
 class json {
     value_t type;
+    bool owns_arena_ = false;
     union json_value {
         object_t* object;
         array_t* array;
@@ -340,6 +312,7 @@ class json {
         double float_num;
         bool boolean;
     } value;
+    arena_allocator* arena_ = nullptr;
 
     inline void destroy() {
         switch (type) {
@@ -347,6 +320,9 @@ class json {
                 (*value.object).~object_t();
                 break;
             case value_t::owned_object:
+                for (const auto& it : *value.object) {
+                    free(it.first.data);
+                }
                 delete value.object;
                 break;
             case value_t::array:
@@ -362,10 +338,29 @@ class json {
                 break;
         }
     }
+    
+    static string_t alloc_string(size_t size) {
+        char* data = static_cast<char*>(malloc(size * sizeof(char)));
+        return string_t{data, 0};
+    }
+    
+    static string_t alloc_string(size_t size, arena_allocator* arena) {
+        assert(arena);
+        char* data = static_cast<char*>(arena->alloc(size * sizeof(char)));
+        return string_t{data, 0};
+    }
 
     static string_t alloc_string(const char* str) {
         size_t s = strlen(str);
         char* data = static_cast<char*>(malloc(s * sizeof(char)));
+        memcpy(data, str, s);
+        return string_t{data, s};
+    }
+    
+    static string_t alloc_string(const char* str, arena_allocator* arena) {
+        assert(arena);
+        size_t s = strlen(str);
+        char* data = static_cast<char*>(arena->alloc(s * sizeof(char)));
         memcpy(data, str, s);
         return string_t{data, s};
     }
@@ -376,9 +371,24 @@ class json {
         return string_t{data, size};
     }
 
+    static string_t alloc_string(const char* str, size_t size, arena_allocator* arena) {
+        assert(arena);
+        char* data = static_cast<char*>(arena->alloc(size * sizeof(char)));
+        memcpy(data, str, size);
+        return string_t{data, size};
+    }
+
     static string_t alloc_string(const std::string& str) {
         size_t s = str.size();
         char* data = static_cast<char*>(malloc(s * sizeof(char)));
+        memcpy(data, str.data(), s);
+        return string_t{data, s};
+    }
+
+    static string_t alloc_string(const std::string& str, arena_allocator* arena) {
+        assert(arena);
+        size_t s = str.size();
+        char* data = static_cast<char*>(arena->alloc(s * sizeof(char)));
         memcpy(data, str.data(), s);
         return string_t{data, s};
     }
@@ -388,12 +398,34 @@ class json {
         memcpy(data, str.data, str.size);
         return string_t{data, str.size};
     }
+  
+    static string_t alloc_string(const string_t& str, arena_allocator* arena) {
+        assert(arena);
+        char* data = static_cast<char*>(arena->alloc(str.size * sizeof(char)));
+        memcpy(data, str.data, str.size);
+        return string_t{data, str.size};
+    }
+    
+    static object_t* alloc_object(arena_allocator* arena) {
+        return new(arena->alloc(sizeof(object_t))) object_t();
+    }
+
+    static object_t* alloc_object(const object_t& o, arena_allocator* arena) {
+        return new(arena->alloc(sizeof(object_t))) object_t(o);
+    }
+
+    static object_t* alloc_object(object_t&& o, arena_allocator* arena) {
+        return new(arena->alloc(sizeof(object_t))) object_t(std::move(o));
+    }
 
 public:
     json() : type(value_t::null), value{.object = nullptr} {}
     json(nullptr_t null) : type(value_t::null), value{.object = nullptr} {}
+    json(arena_allocator* arena) : type(value_t::null), value{.object = nullptr}, arena_(arena) {}
     json(const char* str) : type(value_t::owned_string), value{.string = alloc_string(str)} {}
+    json(const char* str, arena_allocator* arena) : type(value_t::string), value{.string = alloc_string(str, arena)}, arena_(arena) {}
     json(const std::string& str) : type(value_t::owned_string), value{.string = alloc_string(str)} {}
+    json(const std::string& str, arena_allocator* arena) : type(value_t::string), value{.string = alloc_string(str, arena)}, arena_(arena) {}
 private:
     json(const string& str) : type(value_t::string), value{.string = str} {}
 public:
@@ -404,13 +436,18 @@ public:
     json(bool b) : type(value_t::boolean), value{.boolean = b} {}
     json(const object_t& o) : type(value_t::owned_object), value{.object = new object_t(o)} {}
     json(object_t&& o) : type(value_t::owned_object), value{.object = new object_t(std::move(o))} {}
+    json(const object_t& o, arena_allocator* arena) : type(value_t::object), value{.object = alloc_object(o, arena)}, arena_(arena) {}
+    json(object_t&& o, arena_allocator* arena) : type(value_t::object), value{.object = alloc_object(std::move(o), arena)}, arena_(arena) {}
     json(const array_t& a) : type(value_t::owned_array), value{.array = new array_t(a)} {}
     json(array_t&& a) : type(value_t::owned_array), value{.array = new array_t(std::move(a))} {}
+    json(const array_t& a, arena_allocator* arena) : type(value_t::owned_array), value{.array = new array_t(a)}, arena_(arena) {}
+    json(array_t&& a, arena_allocator* arena) : type(value_t::owned_array), value{.array = new array_t(std::move(a))}, arena_(arena) {}
+public:
 
     json(std::initializer_list<json> init) : value{.object=nullptr} {
         bool looks_like_object = true;
         for (const auto& it : init) {
-            looks_like_object = it.is_array() && it.size() == 2 && it[0]->is_string();
+            looks_like_object = it.is_array() && it.size() == 2 && it[0].is_string();
             if (!looks_like_object) {
                 break;
             }
@@ -420,8 +457,8 @@ public:
             value.object = new object_t();
             value.object->reserve(init.size());
             for (auto& it : init) {
-                string_t name = alloc_string(it[0]->value.string);
-                value.object->push_back({name, std::move(*it[1])});
+                string_t name = alloc_string(it[0].value.string);
+                value.object->emplace_back(std::move(name), std::move(it[1]));
             }
         } else {
             type = value_t::owned_array;
@@ -439,6 +476,10 @@ public:
 
     static json object(object_t&& o) {
         return json(std::move(o));
+    }
+
+    static json object(arena_allocator* arena) {
+        return json(object_t{}, arena);
     }
 
 /*
@@ -465,12 +506,23 @@ public:
         return json(array_t{std::forward<Args>(args)...});
     }
 
+    static json doc() {
+        json j;
+        j.arena_ = new arena_allocator();
+        j.owns_arena_ = true;
+        return j;
+    }
+
     json(const json& other) : type(other.type) {
         switch (type) {
             case value_t::object:
             case value_t::owned_object:
                 type = value_t::owned_object;
-                value.object = new object_t(*other.value.object);
+                value.object = new object_t();
+                value.object->reserve(other.value.object->size());
+                for (const auto& other_it : *other.value.object) {
+                    value.object->emplace_back(alloc_string(other_it.first), other_it.second);
+                }
                 break;
             case value_t::array:
             case value_t::owned_array:
@@ -479,8 +531,13 @@ public:
                 break;
             case value_t::string:
             case value_t::owned_string:
-                type = value_t::owned_string;
-                value.string = alloc_string(other.value.string);
+                if (arena_) {
+                    type = value_t::string;
+                    value.string = alloc_string(other.value.string, arena_);
+                } else {
+                    type = value_t::owned_string;
+                    value.string = alloc_string(other.value.string);
+                }
                 break;
             case value_t::int_num:
                 value.int_num = other.value.int_num;
@@ -507,8 +564,21 @@ public:
             switch (type) {
                 case value_t::object:
                 case value_t::owned_object:
-                    type = value_t::owned_object;
-                    value.object = new object_t(*other.value.object);
+                    if (arena_) {
+                        type = value_t::object;
+                        value.object = alloc_object(arena_);
+                        value.object->reserve(other.value.object->size());
+                        for (const auto& other_it : *other.value.object) {
+                            value.object->emplace_back(alloc_string(other_it.first, arena_), other_it.second);
+                        }
+                    } else {
+                        type = value_t::owned_object;
+                        value.object = new object_t();
+                        value.object->reserve(other.value.object->size());
+                        for (const auto& other_it : *other.value.object) {
+                            value.object->emplace_back(alloc_string(other_it.first), other_it.second);
+                        }
+                    }
                     break;
                 case value_t::array:
                 case value_t::owned_array:
@@ -517,8 +587,13 @@ public:
                     break;
                 case value_t::string:
                 case value_t::owned_string:
-                    type = value_t::owned_string;
-                    value.string = alloc_string(other.value.string);
+                    if (arena_) {
+                        type = value_t::string;
+                        value.string = alloc_string(other.value.string, arena_);
+                    } else {
+                        type = value_t::owned_string;
+                        value.string = alloc_string(other.value.string);
+                    }
                     break;
                 case value_t::int_num:
                     value.int_num = other.value.int_num;
@@ -546,18 +621,103 @@ public:
 
     json& operator=(json&& other) {
         if (this != &other) {
-            swap(*this, other);
+            if (arena_ != other.arena_ || owns_arena_) {
+                if (!arena_) {
+                    arena_ = other.arena_;
+                }
+                type = other.type;
+                switch (type) {
+                    case value_t::object:
+                    case value_t::owned_object:
+                        if (arena_) {
+                            type = value_t::object;
+                            value.object = alloc_object(arena_);
+                            value.object->reserve(other.value.object->size());
+                            for (const auto& other_it : *other.value.object) {
+                                value.object->emplace_back(alloc_string(other_it.first, arena_), other_it.second);
+                            }
+                        } else {
+                            type = value_t::owned_object;
+                            value.object = new object_t();
+                            value.object->reserve(other.value.object->size());
+                            for (const auto& other_it : *other.value.object) {
+                                value.object->emplace_back(alloc_string(other_it.first), other_it.second);
+                            }
+                        }
+                        break;
+                    case value_t::array:
+                    case value_t::owned_array:
+                        type = value_t::owned_array;
+                        value.array = new array_t(*other.value.array);
+                        break;
+                    case value_t::string:
+                    case value_t::owned_string:
+                        if (arena_) {
+                            type = value_t::string;
+                            value.string = alloc_string(other.value.string, arena_);
+                        } else {
+                            type = value_t::owned_string;
+                            value.string = alloc_string(other.value.string);
+                        }
+                        break;
+                    case value_t::int_num:
+                        value.int_num = other.value.int_num;
+                        break;
+                    case value_t::uint_num:
+                        value.uint_num = other.value.uint_num;
+                        break;
+                    case value_t::float_num:
+                        value.float_num = other.value.float_num;
+                        break;
+                    case value_t::boolean:
+                        value.boolean = other.value.boolean;
+                        break;
+                    case value_t::null:
+                        value.object = nullptr;
+                        break;
+                }
+            } else {
+                swap(*this, other);
+            }
+        }
+        return *this;
+    }
+    
+    friend void swap(json& a, json& b) {
+        std::swap(a.type, b.type);
+        std::swap(a.value, b.value);
+        std::swap(a.arena_, b.arena_);
+        std::swap(a.owns_arena_, b.owns_arena_);
+    }
+
+    json& operator=(nullptr_t n) {
+        destroy();
+        type = value_t::null;
+        value.object = nullptr;
+        return *this;
+    }
+
+    json& operator=(const char* str) {
+        destroy();
+        if (arena_) {
+            type = value_t::string;
+            value.string = alloc_string(str, arena_);
+        } else {
+            type = value_t::owned_string;
+            value.string = alloc_string(str);
         }
         return *this;
     }
 
     ~json() {
         destroy();
+        if (owns_arena_) {
+            delete arena_;
+        }
     }
 
-    friend void swap(json& a, json& b) {
-        std::swap(a.type, b.type);
-        std::swap(a.value, b.value);
+    arena_allocator* arena() const {
+        return arena_;
     }
 
     inline size_t empty() const {
@@ -743,10 +903,10 @@ public:
                 }
                 os << "{\n";
                 indent += 2;
-                auto b = j.value.object->begin();
+                auto b = j.value.object->cbegin();
                 auto n = b;
                 n++;
-                auto e = j.value.object->end();
+                auto e = j.value.object->cend();
                 while (n != e) {
                     std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
                     write_string(b->first) << ": ";
@@ -816,7 +976,7 @@ public:
     void push_back(const json& j) {
         if (is_null()) {
             type = value_t::owned_array;
-            value.array = new array_t(1);
+            value.array = new array_t();
         }
         value.array->push_back(j);
     }
@@ -824,76 +984,82 @@ public:
     void push_back(json&& j) {
         if (is_null()) {
             type = value_t::owned_array;
-            value.array = new array_t(1);
+            value.array = new array_t();
         }
         value.array->push_back(std::move(j));
     }
 
-    json* operator[](int i) {
+    json& operator[](int i) {
         if (is_null()) {
             type = value_t::owned_array;
-            value.array = new array_t(1);
+            value.array = new array_t();
         }
-        return &(*value.array)[i];
+        return (*value.array)[i];
     }
 
-    const json* operator[](int i) const {
-        return &(*value.array)[i];
+    const json& operator[](int i) const {
+        return (*value.array)[i];
     }
 
     // Object Operations
     
-    json* operator[](const char* k) {
-        if (is_null()) {
+    void become_object() {
+        assert(is_null());
+        if (arena_) {
+            type = value_t::object;
+            value.object = alloc_object(arena_);
+        } else {
             type = value_t::owned_object;
-            value.object = new object_t(1);
+            value.object = new object_t();
         }
-
-        for (auto& [name, value] : *value.object) {
-            if (name == k) {
-                return &value;
-            }
-        }
-
-        string_t name = alloc_string(k);
-        value.object->push_back({name, json()});
-        return &value.object->back().second;
-    }
-
-
-    const json* operator[](const char* k) const {
-        for (const auto& [name, value] : *value.object) {
-            if (name == k) {
-                return &value;
-            }
-        }
-        return nullptr;
-    }
-
-    json* operator[](const std::string& k) {
-        if (is_null()) {
-            type = value_t::owned_object;
-            value.object = new object_t(1);
-        }
-
-        for (auto& [name, value] : *value.object) {
-            if (name == k) {
-                return &value;
-            }
-        }
-
-        string_t name = alloc_string(k);
-        value.object->push_back({name, json()});
-        return &value.object->back().second;
     }
     
-    const json* operator[](const std::string& k) const {
-        for (const auto& [name, value] : *value.object) {
+    json& operator[](const char* k) {
+        if (is_null()) {
+            become_object();
+        }
+
+        for (auto& [name, value] : *value.object) {
             if (name == k) {
-                return &value;
+                return value;
             }
         }
-        return nullptr;
+
+        // owned_objects own the names in the object array
+        if (type == value_t::object) {
+            assert(arena_);
+            string_t name = alloc_string(k, arena_);
+            value.object->emplace_back(std::move(name), json(arena_));
+        } else {
+            assert(type == value_t::owned_object);
+            string_t name = alloc_string(k);
+            value.object->emplace_back(std::move(name), json(arena_));
+        }
+        return value.object->back().second;
+    }
+
+    json& operator[](const std::string& k) {
+        if (is_null()) {
+            become_object();
+        }
+
+        for (auto& [name, value] : *value.object) {
+            if (name == k) {
+                return value;
+            }
+        }
+
+        // owned_objects own the names in the object array
+        if (type == value_t::object) {
+            assert(arena_);
+            string_t name = alloc_string(k, arena_);
+            value.object->emplace_back(std::move(name), json(arena_));
+        } else {
+            assert(type == value_t::owned_object);
+            string_t name = alloc_string(k);
+            value.object->emplace_back(std::move(name), json(arena_));
+        }
+        return value.object->back().second;
     }
 
     template<typename ValueT, typename ObjectItT, typename ArrayItT>
@@ -1079,8 +1245,8 @@ public:
         std::abort();
     }
 
-    static result<json_doc, const char*> parse(const std::string& s) {
-        json_doc doc;
+    static result<json, const char*> parse(const std::string& s) {
+        json root = json::doc();
         const char* c = s.data();
         const char* cend = c + s.size();
 
@@ -1092,12 +1258,12 @@ public:
             switch (*c) {
                 case '{': // Begin object
                     c = skip_whitespace(c + 1, cend);
-                    return json::object();
+                    return json::object(root.arena());
                 case '[': // Begin array
                     c = skip_whitespace(c + 1, cend);
                     return json::array();
                 case '"': { // Begin String
-                    auto ps = parse_string(&c, cend, doc.allocator());
+                    auto ps = parse_string(&c, cend, root.arena());
                     if (!ps) {
                         return error(ps.error());
                     }
@@ -1189,20 +1355,20 @@ public:
         {
             result<json, const char*> value = parse_value();
             if (!value) {
-                return error(value.error());
+                return value;
             } else if (!(value.value().is_object() || value.value().is_array())) {
                 // Expect a single value document
                 c = skip_whitespace(c, cend);
                 if (c != cend) {
                     return error<const char*>("Unexpected character:");
                 }
-                doc.assign_root(std::move(value).value());
-                return doc;
+                return value;
             }
 
             // Array or Object
-            json* root = doc.assign_root(std::move(value).value());
-            structures.emplace(root, 0);
+            root = std::move(value).value();
+            assert(root.arena());
+            structures.emplace(&root, 0);
         }
 
         auto end_array_or_object = [&structures, &object_parts, &array_parts]() {
@@ -1331,7 +1497,7 @@ public:
                 // { "name": value, "name2": value2, ... }
                 //   ^
                 string_t key;
-                auto ps = parse_string(&c, cend, doc.allocator());
+                auto ps = parse_string(&c, cend, root.arena());
                 if (!ps) {
                     return error(ps.error());
                 }
@@ -1374,7 +1540,7 @@ public:
             return error<const char*>("Unexpected character");
         }
 
-        return doc;
+        return root;
     }
 
 //private:
@@ -1383,11 +1549,11 @@ public:
 
     // Only called by parse_string when escape characters are found
     static parsed_string parse_string_slow(const char* str_start, const char* str_end, arena_allocator* arena) {
-        string_t ret{};
         // Reserve enough space for the output.
         // At worst this is 6x larger than it needs to be because the entire string could be
         // 6 char length hex codes which map to 1 byte utf-8 codepoints (\u0041 == 'A')
-        ret.data = static_cast<char*>(arena->alloc((str_end - str_start) * sizeof(char)));
+        size_t size = (str_end - str_start) * sizeof(char);
+        string_t ret = alloc_string(size, arena);
 
         auto append = [&ret](const char* str, size_t count) {
             memcpy(ret.data + ret.size, str, count);
@@ -1526,6 +1692,7 @@ public:
      */
     static parsed_string parse_string(const char** c, const char* cend, arena_allocator* arena) {
         assert(**c == '"');
+        assert(arena);
         (*c)++;
         const char* str_start = *c;
         bool take_slow_path = false;
@@ -1556,9 +1723,7 @@ public:
             if (!take_slow_path) {
                 assert(**c == '"');
                 size_t size = static_cast<size_t>(*c - str_start);
-                void* mem = arena->alloc(size);
-                memcpy(mem, str_start, size);
-                return string_t{static_cast<char*>(mem), size};
+                return alloc_string(str_start, size, arena);
             }
 
             // We may not be at the end of the string yet as it may simply have been escaped
@@ -1626,9 +1791,9 @@ public:
             // and s / p will produce correctly rounded values.
             //
             if (power < 0) {
-                *d = *d / pow(10.0, -power);
+                *d = *d / std::pow(10.0, -power);
             } else {
-                *d = *d * pow(10.0, power);
+                *d = *d * std::pow(10.0, power);
             }
             return true;
         }
