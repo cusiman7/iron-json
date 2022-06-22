@@ -3,7 +3,7 @@
 
 #include <deque>
 #include <initializer_list>
-#include <iostream>
+#include <iosfwd>
 #include <stack>
 #include <string>
 #include <vector>
@@ -26,11 +26,6 @@ bool under_max(U n) {
     return n <= std::numeric_limits<T>::max();
 }
 
-static const char* json_control_char_codes[32] = {"\\u0000", "\\u0001", "\\u0002", "\\u0003",
-    "\\u0004", "\\u0005", "\\u0006", "\\u0007", "\\b", "\\t", "\\n",
-    "\\u000B", "\\f", "\\r", "\\u000E", "\\u000F", "\\u0010", "\\u0011",
-    "\\u0012", "\\u0013", "\\u0014", "\\u0015", "\\u0016", "\\u0017", "\\u0018",
-    "\\u0019", "\\u001A", "\\u001B", "\\u001C", "\\u001D", "\\u001E", "\\u001F"};
 } // namespace
 
 template <typename E>
@@ -271,10 +266,7 @@ struct string {
         return !(lhs == rhs);
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const string& rhs) {
-        os.write(rhs.data, rhs.size);
-        return os;
-    }
+    friend std::ostream& operator<<(std::ostream& os, const string& rhs);
 };
 
 enum class json_error: uint8_t {
@@ -863,113 +855,10 @@ public:
         }
     }
 
-    static std::ostream& pretty_print(std::ostream& os, const json& j, size_t& indent) {
-        auto write_string = [&os](const string_t& str) -> std::ostream& {
-            os.put('"');
-            for (size_t i = 0; i < str.size; i++) {
-                unsigned char c = str.data[i];
-                if (c <= 0x1F || c == '"' || c == '\\') {
-                    switch (c) {
-                        case '"':
-                            os.write("\\\"", 2);
-                            break;
-                        case '\\':
-                            os.write("\\\\", 2);
-                            break;
-                        case '\b':
-                        case '\f':
-                        case '\n':
-                        case '\r':
-                        case '\t':
-                            os.write(json_control_char_codes[c], 2);
-                            break;
-                         default:
-                            os.write(json_control_char_codes[c], 6);
-                            break;
-                    }
-                } else {
-                    os.put(str.data[i]);
-                }
-            }
-            os.put('"');
-            return os;
-        };
-        switch (j.type) {
-            case value_t::object:
-            case value_t::owned_object: {
-                if (j.value.object->empty()) {
-                    os << "{}";
-                    break;
-                }
-                os << "{\n";
-                indent += 2;
-                auto b = j.value.object->cbegin();
-                auto n = b;
-                n++;
-                auto e = j.value.object->cend();
-                while (n != e) {
-                    std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
-                    write_string(b->first) << ": ";
-                    pretty_print(os, b->second, indent) << ",\n";
-                    ++b;
-                    ++n;
-                }
-                std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
-                write_string(b->first) << ": ";
-                pretty_print(os, b->second, indent) << "\n";
-                indent -= 2;
-                std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
-                os << "}";
-                break;
-            }
-            case value_t::array:
-            case value_t::owned_array: {
-                if (j.value.array->empty()) {
-                    os << "[]";
-                    break;
-                }
-                os << "[\n";
-                indent += 2;
-                auto b = j.value.array->begin();
-                auto e = --j.value.array->end();
-                while (b != e) {
-                    std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
-                    pretty_print(os, *b++, indent) << ",\n";
-                }
-                std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
-                pretty_print(os, *b, indent) << "\n";
-                indent -= 2;
-                std::fill_n(std::ostream_iterator<char>(os), indent, ' ');
-                os << "]";
-                break;
-            }
-            case value_t::string:
-            case value_t::owned_string:
-                write_string(j.value.string);
-                break;
-            case value_t::int_num:
-                os << j.value.int_num;
-                break;
-            case value_t::uint_num:
-                os << j.value.uint_num;
-                break;
-            case value_t::float_num:
-                os << j.value.float_num;
-                break;
-            case value_t::boolean:
-                os << (j.value.boolean ? "true" : "false");
-                break;
-            case value_t::null:
-                os << "null";
-                break;
-        }
-        return os;
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const json& j) {
-        size_t indent = 0;
-        return pretty_print(os, j, indent);
-    }
+    std::string dump() const;
+    static std::ostream& print(std::ostream& os, const json& j);
+    static std::ostream& pretty_print(std::ostream& os, const json& j, size_t& indent);
+    friend std::ostream& operator<<(std::ostream& os, const json& j);
 
     // Array Operations
 

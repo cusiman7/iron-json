@@ -4,6 +4,7 @@
 #include <iron/json.h>
 
 #include <sstream>
+#include <iostream>
 
 using fe::json;
 
@@ -297,4 +298,25 @@ TEST("parse UTF-8") {
         auto j = json::parse("\"\xa0\xa1\"");
         CHECK(!j);
     }
+}
+
+TEST("parse and dump") {
+    const char* data =
+R"({
+    "Image": {
+        "Width":  800,
+        "Height": 600,
+        "Title":  "View from 15th Floor",
+        "Thumbnail": {
+            "Url":    "http://www.example.com/image/481989943",
+            "Height": 125,
+            "Width":  100
+        },
+        "Animated" : false,
+        "IDs": [116, 943, 234, 38793]
+      }
+})";
+
+    auto j = json::parse(data).value();
+    CHECK(j.dump() == R"({"Image":{"Width":800,"Height":600,"Title":"View from 15th Floor","Thumbnail":{"Url":"http://www.example.com/image/481989943","Height":125,"Width":100},"Animated":false,"IDs":[116,943,234,38793]}})");
 }
