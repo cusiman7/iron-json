@@ -3,7 +3,7 @@
 
 using fe::json;
 
-int main(int argc, char** argv) {
+int main(int, char** argv) {
     auto result = json::parse(argv[1]);
     return !result;
 }

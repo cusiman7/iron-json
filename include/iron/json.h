@@ -420,7 +420,7 @@ class json {
 
 public:
     json() : type(value_t::null), value{.object = nullptr} {}
-    json(nullptr_t null) : type(value_t::null), value{.object = nullptr} {}
+    json(nullptr_t null) : type(value_t::null), value{.object = null} {}
     json(arena_allocator* arena) : type(value_t::null), value{.object = nullptr}, arena_(arena) {}
     json(const char* str) : type(value_t::owned_string), value{.string = alloc_string(str)} {}
     json(const char* str, arena_allocator* arena) : type(value_t::string), value{.string = alloc_string(str, arena)}, arena_(arena) {}
@@ -693,7 +693,7 @@ public:
     json& operator=(nullptr_t n) {
         destroy();
         type = value_t::null;
-        value.object = nullptr;
+        value.object = n;
         return *this;
     }
 
@@ -1821,7 +1821,6 @@ public:
         const char* c_begin = str;
         const char* cend = end;
 
-        const char* error = nullptr;
         int sign = 1;
         uint64_t u = 0;
         int exponent_sign = 1;

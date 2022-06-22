@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.19)
 project(ironjson)
 set(CMAKE_CXX_STANDARD 11)
 
+add_compile_options(-Wall -Wpedantic -Wextra)
+if (${CMAKE_BUILD_TYPE} STREQUAL Release OR ${CMAKE_BUILD_TYPE} STREQUAL RelWithDebInfo)
+    add_compile_options(-Werror)
+endif()
 #add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
 #add_link_options(-fsanitize=address)
 

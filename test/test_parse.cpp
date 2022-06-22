@@ -30,7 +30,7 @@ TEST("json::parse numbers") {
         REQUIRE(j);
         CHECK(j.value().is_number());
         REQUIRE(j.value().is_uint());
-        CHECK(j.value().get<uint64_t>().value() == 1);
+        CHECK(j.value().get<uint64_t>().value() == 1u);
     }
     {
         // largest uint64_t
@@ -277,7 +277,7 @@ R"({
 
     REQUIRE(image["IDs"].is_array());
     auto ids = image["IDs"];
-    REQUIRE(ids.size() == 4);
+    REQUIRE(ids.size() == 4u);
     CHECK(ids[0].get<int32_t>().value() == 116);
     CHECK(ids[1].get<int32_t>().value() == 943);
     CHECK(ids[2].get<int32_t>().value() == 234);

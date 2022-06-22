@@ -5,7 +5,7 @@
 
 using fe::json;
 
-int main(int argc, const char** argv) {
+int main() {
     json null;
     for (auto& it : null) {
         std::cout << it << "\n";
@@ -63,8 +63,8 @@ int main(int argc, const char** argv) {
         std::cout << it.key() << ": " << it.value() << "\n";
         std::cout << it.first() << ": " << it.second() << "\n";
     }
-    for (const auto& [key, value] : j5.items()) {
-        std::cout << key << ": " << value << "\n";
+    for (const auto& it : j5.items()) {
+        std::cout << it.first << ": " << it.second << "\n";
     }
     std::cout << j5 << "\n";
 
