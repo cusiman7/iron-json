@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <iterator> // ostream_iterator
 
 namespace {
 static const char* json_control_char_codes[32] = {"\\u0000", "\\u0001", "\\u0002", "\\u0003",
@@ -43,7 +44,7 @@ std::ostream& write_string(std::ostream& os, const fe::string_t& str) {
     os.write(str.data + start, i - start);
     os.put('"');
     return os;
-};
+}
 } // namespace
 
 namespace fe {

@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <sstream>
 #include <stdexcept>
+#include <limits>
 
 namespace test {
 
@@ -143,6 +144,8 @@ struct Check {
         }                                                                       \
     }                                                                           \
     void detail::CONCAT(_registered_test_, __LINE__)()
+
+#pragma GCC diagnostic ignored "-Wparentheses"
 
 #define CHECK(expr) ((test::Check{} < expr) ? void(0) : test::on_check_failed(#expr, __FILE__, __LINE__))
 

@@ -25,7 +25,7 @@ bool within_limits(U n) {
 template <typename T, typename U>
 bool under_max(U n) {
     static_assert(std::is_unsigned<U>::value, "Number must be unsigned to use under_max");
-    return n <= std::numeric_limits<T>::max();
+    return n <= static_cast<U>(std::numeric_limits<T>::max());
 }
 
 } // namespace
@@ -413,32 +413,56 @@ class json {
     }
 
 public:
-    json() : type(value_t::null), value{.object = nullptr} {}
-    json(nullptr_t null) : type(value_t::null), value{.object = null} {}
-    json(arena_allocator* arena) : type(value_t::null), value{.object = nullptr}, arena_(arena) {}
-    json(const char* str) : type(value_t::owned_string), value{.string = alloc_string(str)} {}
-    json(const char* str, arena_allocator* arena) : type(value_t::string), value{.string = alloc_string(str, arena)}, arena_(arena) {}
-    json(const std::string& str) : type(value_t::owned_string), value{.string = alloc_string(str)} {}
-    json(const std::string& str, arena_allocator* arena) : type(value_t::string), value{.string = alloc_string(str, arena)}, arena_(arena) {}
+    json() : type(value_t::null) {
+        value.object = nullptr;
+    }
+    json(nullptr_t) : json() {}
+    json(arena_allocator* arena) : type(value_t::null), arena_(arena) {
+         value.object = nullptr;
+    }
+    json(const char* str) : type(value_t::owned_string) {
+        value.string = alloc_string(str); 
+    }
+    json(const char* str, arena_allocator* arena) : type(value_t::string), arena_(arena) {
+        value.string = alloc_string(str, arena);
+    }
+    json(const std::string& str) : type(value_t::owned_string) {
+        value.string = alloc_string(str);
+    }
+    json(const std::string& str, arena_allocator* arena) : type(value_t::string), arena_(arena) {
+        value.string = alloc_string(str, arena);
+    }
 private:
-    json(const string& str) : type(value_t::string), value{.string = str} {}
+    json(const string& str) : type(value_t::string) { value.string = str; }
 public:
-    json(int num) : type(value_t::int_num), value{.int_num = num} {}
-    json(int64_t num) : type(value_t::int_num), value{.int_num = num} {}
-    json(uint64_t num) : type(value_t::uint_num), value{.uint_num = num} {}
-    json(double num) : type(value_t::float_num), value{.float_num = num} {}
-    json(bool b) : type(value_t::boolean), value{.boolean = b} {}
-    json(const object_t& o) : type(value_t::owned_object), value{.object = new object_t(o)} {}
-    json(object_t&& o) : type(value_t::owned_object), value{.object = new object_t(std::move(o))} {}
-    json(const object_t& o, arena_allocator* arena) : type(value_t::object), value{.object = alloc_object(o, arena)}, arena_(arena) {}
-    json(object_t&& o, arena_allocator* arena) : type(value_t::object), value{.object = alloc_object(std::move(o), arena)}, arena_(arena) {}
-    json(const array_t& a) : type(value_t::owned_array), value{.array = new array_t(a)} {}
-    json(array_t&& a) : type(value_t::owned_array), value{.array = new array_t(std::move(a))} {}
-    json(const array_t& a, arena_allocator* arena) : type(value_t::owned_array), value{.array = new array_t(a)}, arena_(arena) {}
-    json(array_t&& a, arena_allocator* arena) : type(value_t::owned_array), value{.array = new array_t(std::move(a))}, arena_(arena) {}
+    json(int num) : type(value_t::int_num) { value.int_num = num; }
+    json(int64_t num) : type(value_t::int_num) { value.int_num = num; }
+    json(uint64_t num) : type(value_t::uint_num) { value.uint_num = num; }
+    json(double num) : type(value_t::float_num) { value.float_num = num; }
+    json(bool b) : type(value_t::boolean) { value.boolean = b; }
+    json(const object_t& o) : type(value_t::owned_object) { value.object = new object_t(o); }
+    json(object_t&& o) : type(value_t::owned_object) { value.object = new object_t(std::move(o)); }
+    json(const object_t& o, arena_allocator* arena) : type(value_t::object), arena_(arena) {
+        value.object = alloc_object(o, arena);
+    }
+    json(object_t&& o, arena_allocator* arena) : type(value_t::object), arena_(arena) {
+        value.object = alloc_object(std::move(o), arena);
+    }
+    json(const array_t& a) : type(value_t::owned_array) {
+        value.array = new array_t(a);
+    }
+    json(array_t&& a) : type(value_t::owned_array) {
+        value.array = new array_t(std::move(a));
+    }
+    json(const array_t& a, arena_allocator* arena) : type(value_t::owned_array), arena_(arena) {
+        value.array = new array_t(a);
+    }
+    json(array_t&& a, arena_allocator* arena) : type(value_t::owned_array), arena_(arena) {
+        value.array = new array_t(std::move(a));
+    }
 public:
 
-    json(std::initializer_list<json> init) : value{.object=nullptr} {
+    json(std::initializer_list<json> init) : json() {
         bool looks_like_object = true;
         for (const auto& it : init) {
             looks_like_object = it.is_array() && it.size() == 2 && it[0].is_string();
@@ -1407,7 +1431,7 @@ public:
                             bytes[0] = 0xC0 | (codeunit >> 6);
                             bytes[1] = 0x80 | (codeunit & 0x3F);
                             append(bytes, 2);
-                        } else if ((codeunit >= 0x800 && codeunit <= 0xD7FF) || (codeunit >= 0xE000 && codeunit <= 0xFFFF)) {
+                        } else if ((codeunit >= 0x800 && codeunit <= 0xD7FF) || (codeunit >= 0xE000)) {
                             // 1110xxxx	10xxxxxx 10xxxxxx
                             char bytes[3];
                             bytes[0] = 0xE0 | (codeunit >> 12);
@@ -1482,7 +1506,7 @@ public:
                 // Naive UTF-8 validation
                 unsigned char byte_0 = **c;
                 int n = 0;
-                if (0x00 <= byte_0 && byte_0 <= 0x7F) n = 0;
+                if (byte_0 <= 0x7F) n = 0;
                 else if ((byte_0 & 0xE0) == 0xC0) n = 1;
                 else if ((byte_0 & 0xF0) == 0xE0) n = 2;
                 else if ((byte_0 & 0xF8) == 0xF0) n = 3;
@@ -1652,6 +1676,7 @@ public:
                         case 'e':
                         case 'E':
                             phase = parse_phase::real_exponent_1;
+                            break;
                         default:
                             // Return unsigned number
                             if (c - c_begin <= 19 || (c - c_begin == 20 && u >= 10000000000000000000ull)) {
@@ -1923,6 +1948,7 @@ public:
                 }
             }
         }
+        return parsed_number(c, "parse_number fell through to end of function");
     }
 
     static inline const char* skip_whitespace(const char* c, const char* cend) {
