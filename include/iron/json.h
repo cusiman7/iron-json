@@ -4,14 +4,16 @@
 #include <deque>
 #include <initializer_list>
 #include <iosfwd>
+#include <limits>
 #include <stack>
 #include <string>
 #include <vector>
 
-#include <stdint.h>
 #include <cassert>
 #include <cfloat>
 #include <cmath> // std::pow
+#include <cstring>
+#include <stdint.h>
 
 namespace fe {
 namespace {
@@ -228,7 +230,7 @@ struct string {
 
     friend bool operator==(const string& lhs, const char* rhs) {
         if (lhs.data && rhs) {
-            size_t rhs_size = strlen(rhs);
+            size_t rhs_size = std::strlen(rhs);
             if (lhs.size != rhs_size) return false;
             return std::memcmp(lhs.data, rhs, lhs.size) == 0;
         }
@@ -343,7 +345,7 @@ class json {
     }
 
     static string_t alloc_string(const char* str) {
-        size_t s = strlen(str);
+        size_t s = std::strlen(str);
         char* data = static_cast<char*>(malloc(s * sizeof(char)));
         memcpy(data, str, s);
         return string_t{data, s};
@@ -351,7 +353,7 @@ class json {
     
     static string_t alloc_string(const char* str, arena_allocator* arena) {
         assert(arena);
-        size_t s = strlen(str);
+        size_t s = std::strlen(str);
         char* data = static_cast<char*>(arena->alloc(s * sizeof(char)));
         memcpy(data, str, s);
         return string_t{data, s};
@@ -738,122 +740,6 @@ public:
 
     template <typename T>
     result<T, json_error> get() const;
-
-    template <>
-    result<std::string, json_error> get<std::string>() const {
-        if (is_string()) {
-            return std::string(value.string.data, value.string.size);
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<bool, json_error> get<bool>() const {
-        if (is_boolean()) {
-            return bool(value.boolean);
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<int8_t, json_error> get<int8_t>() const {
-        if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
-            return value.int_num;
-        } else if (type == value_t::uint_num && under_max<int8_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<int16_t, json_error> get<int16_t>() const {
-        if (type == value_t::int_num && within_limits<int16_t>(value.int_num)) {
-            return value.int_num;
-        } else if (type == value_t::uint_num && under_max<int16_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<int32_t, json_error> get<int32_t>() const {
-        if (type == value_t::int_num && within_limits<int32_t>(value.int_num)) {
-            return value.int_num;
-        } else if (type == value_t::uint_num && under_max<int32_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<int64_t, json_error> get<int64_t>() const {
-        if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
-            return value.int_num;
-        } else if (type == value_t::uint_num && under_max<int64_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<uint8_t, json_error> get<uint8_t>() const {
-        if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<uint16_t, json_error> get<uint16_t>() const {
-        if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<uint32_t, json_error> get<uint32_t>() const {
-        if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<uint64_t, json_error> get<uint64_t>() const {
-        if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
-            return value.uint_num;
-        }
-        return error<json_error>(json_error::invalid_type);
-    }
-
-    template <>
-    result<float, json_error> get<float>() const {
-        switch (type) {
-            case value_t::float_num:
-                return value.float_num;
-            case value_t::int_num:
-                return value.int_num;
-            case value_t::uint_num:
-                return value.uint_num;
-            default:
-                return error<json_error>(json_error::invalid_type);
-        }
-    }
-
-    template <>
-    result<double, json_error> get<double>() const {
-        switch (type) {
-            case value_t::float_num:
-                return value.float_num;
-            case value_t::int_num:
-                return value.int_num;
-            case value_t::uint_num:
-                return value.uint_num;
-            default:
-                return error<json_error>(json_error::invalid_type);
-        }
-    }
 
     std::string dump() const;
     static std::ostream& print(std::ostream& os, const json& j);
@@ -2055,6 +1941,122 @@ public:
         return c;
     }
 }; // class json
+
+template <>
+inline result<std::string, json_error> json::get<std::string>() const {
+    if (is_string()) {
+        return std::string(value.string.data, value.string.size);
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<bool, json_error> json::get<bool>() const {
+    if (is_boolean()) {
+        return bool(value.boolean);
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<int8_t, json_error> json::get<int8_t>() const {
+    if (type == value_t::int_num && within_limits<int8_t>(value.int_num)) {
+        return value.int_num;
+    } else if (type == value_t::uint_num && under_max<int8_t>(value.uint_num)) {
+        return value.uint_num;
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<int16_t, json_error> json::get<int16_t>() const {
+    if (type == value_t::int_num && within_limits<int16_t>(value.int_num)) {
+        return value.int_num;
+    } else if (type == value_t::uint_num && under_max<int16_t>(value.uint_num)) {
+        return value.uint_num;
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<int32_t, json_error> json::get<int32_t>() const {
+    if (type == value_t::int_num && within_limits<int32_t>(value.int_num)) {
+        return value.int_num;
+    } else if (type == value_t::uint_num && under_max<int32_t>(value.uint_num)) {
+        return value.uint_num;
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<int64_t, json_error> json::get<int64_t>() const {
+    if (type == value_t::int_num && within_limits<int64_t>(value.int_num)) {
+        return value.int_num;
+    } else if (type == value_t::uint_num && under_max<int64_t>(value.uint_num)) {
+        return value.uint_num;
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<uint8_t, json_error> json::get<uint8_t>() const {
+    if (type == value_t::uint_num && within_limits<uint8_t>(value.uint_num)) {
+        return value.uint_num;
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<uint16_t, json_error> json::get<uint16_t>() const {
+    if (type == value_t::uint_num && within_limits<uint16_t>(value.uint_num)) {
+        return value.uint_num;
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<uint32_t, json_error> json::get<uint32_t>() const {
+    if (type == value_t::uint_num && within_limits<uint32_t>(value.uint_num)) {
+        return value.uint_num;
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<uint64_t, json_error> json::get<uint64_t>() const {
+    if (type == value_t::uint_num && within_limits<uint64_t>(value.uint_num)) {
+        return value.uint_num;
+    }
+    return error<json_error>(json_error::invalid_type);
+}
+
+template <>
+inline result<float, json_error> json::get<float>() const {
+    switch (type) {
+        case value_t::float_num:
+            return value.float_num;
+        case value_t::int_num:
+            return value.int_num;
+        case value_t::uint_num:
+            return value.uint_num;
+        default:
+            return error<json_error>(json_error::invalid_type);
+    }
+}
+
+template <>
+inline result<double, json_error> json::get<double>() const {
+    switch (type) {
+        case value_t::float_num:
+            return value.float_num;
+        case value_t::int_num:
+            return value.int_num;
+        case value_t::uint_num:
+            return value.uint_num;
+        default:
+            return error<json_error>(json_error::invalid_type);
+    }
+}
 
 } // namespace fe
 
